@@ -8,12 +8,12 @@ This mirrors the shape of the [Python SDK](https://github.com/Comfy-Org/ComfyPyt
 (`comfy-sdk`): submit a workflow, wait for it, download the outputs.
 
 ```ts
-import { Comfy } from '@comfyorg/sdk'
+import { Comfy } from "@comfyorg/sdk";
 
-const client = new Comfy('http://127.0.0.1:8189') // local proxy
+const client = new Comfy("http://127.0.0.1:8189"); // local proxy
 // const client = new Comfy('https://api.comfy.org', { apiKey: '...' }) // Comfy Cloud
 
-const job = await client.run(workflowApiJson)
+const job = await client.run(workflowApiJson);
 ```
 
 Status: early scaffold. `run()` is currently a stub that throws — this
