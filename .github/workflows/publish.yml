@@ -1,0 +1,75 @@
+# Scaffold only — publishing is intentionally turned OFF until the npm side
+# is set up. Do not remove the `if: false` guard below without doing the TODO
+# items first; this file exists so the pipeline shape is reviewed now and can
+# be switched on with a small, obvious diff later.
+#
+# TODO before enabling:
+#   1. Create/reserve the `@comfyorg/sdk` package on npmjs.com under the
+#      Comfy-Org npm organization.
+#   2. Set up npm OIDC "Trusted Publishing" for this repo (npm supports GitHub
+#      Actions OIDC the same way PyPI does) pointing at:
+#        repo:     Comfy-Org/ComfyTypeScriptSDK
+#        workflow: publish.yml
+#      This lets npm accept a publish via OIDC — no long-lived NPM_TOKEN
+#      secret needs to be stored in this repo. `id-token: write` below and
+#      `npm publish --provenance` are what OIDC + provenance require.
+#   3. Create a GitHub Environment named "npm" in this repo's settings and
+#      add required reviewers, so every publish needs a manual approval click
+#      even after this workflow is triggered.
+#   4. Once 1-3 are done, remove the `if: false` line in the `publish` job
+#      below (that's the only change needed to turn this on) — the manual
+#      workflow_dispatch trigger and the environment approval gate stay as
+#      the permanent safety net; nothing publishes on every tag automatically.
+name: Publish to npm
+
+on:
+  # Manual only, on purpose: the org's current decision is manual publish,
+  # not "every GitHub Release / tag auto-publishes." A maintainer runs this
+  # from the Actions tab, picking the git tag/ref to build from.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git tag or ref to publish (e.g. v0.1.0)"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Disabled until npm OIDC Trusted Publishing + the "npm" environment
+    # above are configured. See the TODO block at the top of this file.
+    if: false
+    name: Build and publish
+    runs-on: ubuntu-latest
+    environment: npm # requires manual approval once the environment exists with reviewers configured
+    permissions:
+      id-token: write # required for npm Trusted Publishing (OIDC) + provenance, no NPM_TOKEN secret needed
+      contents: read
+    steps:
+      - name: Check out ${{ github.event.inputs.ref }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # unused once OIDC Trusted Publishing is configured; remove then
