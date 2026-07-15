@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+tone_instructions: |
+  This is a public TypeScript SDK (ComfyTypeScriptSDK). CI already runs
+  `oxlint`, `oxfmt --check`, `tsc` (typecheck), and `vitest` on every PR — do
+  not repeat their findings or nitpick style/formatting. Focus on public API
+  stability (this SDK is consumed by external users, so flag breaking
+  changes to exported types/functions), type safety (no `any`), and correct
+  Promise/error handling. Only comment on issues introduced by this PR's
+  changes; do not flag pre-existing problems in moved or reformatted code.
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  commit_status: true
+  collapse_walkthrough: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+
+  path_filters:
+    - "!dist/**"
+    - "!**/node_modules/**"
+    - "!**/pnpm-lock.yaml"
+
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        Public SDK surface. Focus on:
+        - Backward compatibility of exported types/functions (this is a
+          published SDK; breaking an export breaks every consumer)
+        - No `any` type or unsafe type assertions
+        - Correct Promise/async error handling, no floating promises
+    - path: "src/**/*.test.ts"
+      instructions: |
+        Verify tests exercise the described behavior rather than just
+        asserting current output (no change-detector tests).
+
+  tools:
+    gitleaks:
+      enabled: true
+    github-checks:
+      enabled: true
+      timeout_ms: 90000
+
+chat:
+  auto_reply: true
