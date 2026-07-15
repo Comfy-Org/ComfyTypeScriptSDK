@@ -1,0 +1,37 @@
+{
+  "name": "@comfyorg/sdk",
+  "version": "0.0.1",
+  "description": "TypeScript SDK for running ComfyUI workflows via the Comfy API v2 (self-hosted, Comfy Cloud, serverless).",
+  "type": "module",
+  "private": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.13.0",
+  "scripts": {
+    "build": "tsc",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.62.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0"
+  }
+}
