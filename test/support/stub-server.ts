@@ -21,6 +21,14 @@ export interface ServerState {
   contentBytes: Buffer;
   /** Require an Authorization header (Cloud/serverless). */
   requireAuth: boolean;
+  /**
+   * When set, `urls.self`/`events`/`cancel` in job payloads are absolute
+   * URLs prefixed with this origin instead of the default relative path —
+   * lets a test simulate a job whose links point at a different host (e.g.
+   * a CDN/relay), to verify the client does not leak its bearer token
+   * there.
+   */
+  jobUrlsOrigin: string | null;
   /** POST /jobs returns 429 queue_full this many times before succeeding. */
   queueFullTimes: number;
   /** POST /jobs returns this error envelope instead of 201. */
@@ -43,6 +51,10 @@ export interface ServerState {
   lastWorkflow: Record<string, unknown> | null;
   lastUploadContentLength: number | null;
   idempotency: Map<string, string>;
+  /** The raw `Authorization` header value of the most recent request, or
+   * `null` if that request carried none — lets a test prove a bearer token
+   * was (or was not) attached/received. */
+  lastAuthorizationHeader: string | null;
 }
 
 function defaultState(): ServerState {
@@ -52,6 +64,7 @@ function defaultState(): ServerState {
     rejectHashMismatch: false,
     contentBytes: Buffer.from("\x89PNG-stub-output-bytes-0123456789"),
     requireAuth: false,
+    jobUrlsOrigin: null,
     queueFullTimes: 0,
     jobError: null,
     pollsToSucceed: 1,
@@ -67,6 +80,7 @@ function defaultState(): ServerState {
     lastWorkflow: null,
     lastUploadContentLength: null,
     idempotency: new Map(),
+    lastAuthorizationHeader: null,
   };
 }
 
@@ -84,7 +98,13 @@ function assetJson(id: string, hash: string, createdNew: boolean, size: number) 
   };
 }
 
-function jobJson(id: string, status: string, outputs: unknown[] = []) {
+function jobJson(
+  id: string,
+  status: string,
+  outputs: unknown[] = [],
+  urlsOrigin: string | null = null,
+) {
+  const prefix = urlsOrigin ?? "";
   return {
     id,
     status,
@@ -98,9 +118,9 @@ function jobJson(id: string, status: string, outputs: unknown[] = []) {
     error: null,
     metrics: { queue_ms: 9000, execution_ms: null },
     urls: {
-      self: `/api/v2/jobs/${id}`,
-      events: `/api/v2/jobs/${id}/events`,
-      cancel: `/api/v2/jobs/${id}/cancel`,
+      self: `${prefix}/api/v2/jobs/${id}`,
+      events: `${prefix}/api/v2/jobs/${id}/events`,
+      cancel: `${prefix}/api/v2/jobs/${id}/cancel`,
     },
   };
 }
@@ -183,6 +203,7 @@ export class StubServer {
     const url = new URL(req.url ?? "/", "http://stub.invalid");
     const path = url.pathname;
     const state = this.state;
+    state.lastAuthorizationHeader = (req.headers.authorization as string | undefined) ?? null;
 
     if (!this.authOk(req)) {
       await readBody(req);
@@ -243,7 +264,7 @@ export class StubServer {
       }
       const m = /^\/api\/v2\/jobs\/([^/]+)\/cancel$/.exec(path);
       if (m) {
-        sendJson(res, 200, jobJson(m[1], "canceling"));
+        sendJson(res, 200, jobJson(m[1], "canceling", [], state.jobUrlsOrigin));
         return;
       }
       await readBody(req);
@@ -285,7 +306,7 @@ export class StubServer {
     const terminal = state.jobPollCount >= state.pollsToSucceed;
     const status = terminal ? state.terminalStatus : "running";
     const outputs = status === "succeeded" ? [OUTPUT] : [];
-    sendJson(res, 200, jobJson(jobId, status, outputs));
+    sendJson(res, 200, jobJson(jobId, status, outputs, state.jobUrlsOrigin));
   }
 
   private serveEvents(res: ServerResponse): void {
@@ -343,7 +364,7 @@ export class StubServer {
     const key = req.headers["idempotency-key"];
 
     if (typeof key === "string" && state.idempotency.has(key)) {
-      sendJson(res, 201, jobJson(state.idempotency.get(key)!, "queued"), {
+      sendJson(res, 201, jobJson(state.idempotency.get(key)!, "queued", [], state.jobUrlsOrigin), {
         "Idempotency-Replayed": "true",
       });
       return;
@@ -372,7 +393,7 @@ export class StubServer {
 
     const jobId = `job_${String(state.submitCount).padStart(2, "0")}`;
     if (typeof key === "string") state.idempotency.set(key, jobId);
-    sendJson(res, 201, jobJson(jobId, "queued"));
+    sendJson(res, 201, jobJson(jobId, "queued", [], state.jobUrlsOrigin));
   }
 }
 

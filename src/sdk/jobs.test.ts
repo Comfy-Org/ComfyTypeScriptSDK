@@ -68,4 +68,37 @@ describe("Job", () => {
     expect(progressValues).toEqual([0.4, 0.5]);
     expect(server.state.eventsConnectCount).toBe(2);
   });
+
+  it("wait() stops promptly when its AbortSignal aborts during the poll backoff, instead of hanging", async () => {
+    server.state.pollsToSucceed = 1_000_000; // never terminal via polling
+    const job = await jobs.get("job_01");
+    const controller = new AbortController();
+    const promise = job.wait(undefined, controller.signal);
+    setTimeout(() => controller.abort(), 30);
+    const start = Date.now();
+    await expect(promise).rejects.toBeTruthy();
+    // The first backoff step is 500ms; aborting mid-wait must interrupt
+    // that sleep, not merely the in-flight fetch.
+    expect(Date.now() - start).toBeLessThan(400);
+  }, 2000);
+
+  it("events() stops promptly when its AbortSignal aborts during the reconnect pause", async () => {
+    server.state.sseMode = "reconnect";
+    server.state.pollsToSucceed = 1_000_000; // the poll fallback never reports terminal
+    const job = await jobs.get("job_01");
+    const controller = new AbortController();
+    const iterator = job.events(controller.signal);
+
+    // First frame comes from the connection that then drops mid-job.
+    const first = await iterator.next();
+    expect(first.value).toMatchObject({ kind: "progress" });
+
+    // The generator is now doing its post-drop poll + reconnect pause
+    // (100ms). Abort partway through that pause.
+    const second = iterator.next();
+    setTimeout(() => controller.abort(), 20);
+    const start = Date.now();
+    await expect(second).rejects.toBeTruthy();
+    expect(Date.now() - start).toBeLessThan(500);
+  }, 2000);
 });

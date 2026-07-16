@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { StubServer } from "../../test/support/stub-server.js";
-import { BlobNotFound, HashMismatch } from "./errors.js";
+import { BlobNotFound, HashMismatch, Unauthorized } from "./errors.js";
 import { ComfyLow } from "./transport.js";
 
 describe("ComfyLow transport", () => {
@@ -111,5 +111,59 @@ describe("ComfyLow transport", () => {
   it("cancelJob returns the canceling state", async () => {
     const job = await low.cancelJob("job_01");
     expect(job.status).toBe("canceling");
+  });
+
+  // -- per-surface auth (FIX 3) ---------------------------------------------
+
+  it("a request with no apiKey against a no-auth server sends no Authorization header", async () => {
+    await low.getJob("job_01");
+    expect(server.state.lastAuthorizationHeader).toBeNull();
+  });
+
+  it("a request with no apiKey against a server requiring auth gets a typed Unauthorized", async () => {
+    server.state.requireAuth = true;
+    await expect(low.getJob("job_01")).rejects.toBeInstanceOf(Unauthorized);
+  });
+
+  it("a request with an apiKey sends Authorization: Bearer <key>, and the server receives it", async () => {
+    server.state.requireAuth = true;
+    const authed = new ComfyLow(server.baseUrl, "secret-key-123");
+    await authed.getJob("job_01");
+    expect(server.state.lastAuthorizationHeader).toBe("Bearer secret-key-123");
+  });
+
+  // -- cross-origin bearer-token leak (FIX 1) -------------------------------
+
+  it("does not attach the bearer token to a server-supplied cross-origin urls.self/events/cancel", async () => {
+    const authed = new ComfyLow(server.baseUrl, "top-secret-key");
+    const attacker = new StubServer();
+    await attacker.start();
+    try {
+      // The primary server hands back absolute job links pointing at a
+      // different origin (e.g. a relay/CDN) instead of a relative path.
+      server.state.jobUrlsOrigin = attacker.baseUrl;
+
+      const job = await authed.getJob("job_01");
+      expect(job.urls.self.startsWith(attacker.baseUrl)).toBe(true);
+      // Same-origin request (to the primary server itself): the key IS sent.
+      expect(server.state.lastAuthorizationHeader).toBe("Bearer top-secret-key");
+
+      // Following the server-supplied absolute `urls.self` crosses origins —
+      // the key must NOT follow it there.
+      await authed.getJob(job.urls.self);
+      expect(attacker.state.lastAuthorizationHeader).toBeNull();
+
+      // Same for the SSE stream URL.
+      for await (const _event of authed.getJobEvents(job.urls.events)) {
+        // drain
+      }
+      expect(attacker.state.lastAuthorizationHeader).toBeNull();
+
+      // And for cancel.
+      await authed.cancelJob(job.urls.cancel);
+      expect(attacker.state.lastAuthorizationHeader).toBeNull();
+    } finally {
+      await attacker.stop();
+    }
   });
 });

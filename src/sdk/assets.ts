@@ -135,17 +135,18 @@ export class Asset {
   }
 
   /** Force the hash/dedup/upload now; return the asset UUID. */
-  async commit(): Promise<string> {
+  async commit(signal?: AbortSignal): Promise<string> {
     if (this.idValue !== undefined) return this.idValue;
     const digest = await this.hash();
     const asset = await translate(async () => {
-      if (await this.low.headAssetByHash(digest)) {
-        return this.low.assetFromHash(digest, { filePath: this.source.filePath });
+      if (await this.low.headAssetByHash(digest, { signal })) {
+        return this.low.assetFromHash(digest, { filePath: this.source.filePath, signal });
       }
       const blob = await this.source.opener();
       return this.low.postAssets(blob, this.source.contentType, this.source.filePath, {
         expectedHash: digest,
         idempotencyKey: this.idempotencyKey,
+        signal,
       });
     });
     this.adopt(asset);
@@ -153,8 +154,8 @@ export class Asset {
   }
 
   /** The `core/ASSET` object (commits first if needed). */
-  async asReference() {
-    await this.commit();
+  async asReference(signal?: AbortSignal) {
+    await this.commit(signal);
     return assetReference(this.idValue!, { hash: this.hashValue, filePath: this.source.filePath });
   }
 }

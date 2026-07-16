@@ -82,11 +82,31 @@ export class ComfyLow {
     return this.baseUrl + API_PREFIX + path;
   }
 
-  private buildHeaders(extra?: Record<string, string>): Headers {
+  /**
+   * Is `url` on the same origin (scheme + host + port) as this client's
+   * `baseUrl`? A relative `path` always resolves to a `baseUrl`-derived URL
+   * (see {@link urlFor}), so this only ever says "no" for a server-returned
+   * absolute URL (`model.urls.self`/`cancel`/`events`) that points somewhere
+   * else — which is exactly the case where the bearer token must not be
+   * attached.
+   */
+  private isSameOrigin(url: string): boolean {
+    try {
+      return new URL(url).origin === new URL(this.baseUrl).origin;
+    } catch {
+      return false;
+    }
+  }
+
+  private buildHeaders(url: string, extra?: Record<string, string>): Headers {
     const headers = new Headers();
-    // Only authenticate when a key is set: a local proxy fronts a ComfyUI
-    // with no auth, so we never leak credentials it does not want.
-    if (this.apiKey) {
+    // Only authenticate when a key is set (a local proxy fronts a ComfyUI
+    // with no auth, so we never leak credentials it does not want) AND the
+    // request target is this client's own origin. `getJob`/`cancelJob`/
+    // `getJobEvents` can be fed a server-returned absolute URL
+    // (`model.urls.self/cancel/events`); if that ever points at a different
+    // host, the bearer token must not follow it there.
+    if (this.apiKey && this.isSameOrigin(url)) {
       headers.set("Authorization", `Bearer ${this.apiKey}`);
     }
     if (extra) {
@@ -113,14 +133,15 @@ export class ComfyLow {
    * method below is a thin wrapper over this.
    */
   async request(method: string, path: string, options: RequestOptions = {}): Promise<Response> {
-    const headers = this.buildHeaders(options.headers);
+    const url = this.urlFor(path);
+    const headers = this.buildHeaders(url, options.headers);
     let body = options.body;
     if (options.json !== undefined) {
       headers.set("Content-Type", "application/json");
       body = JSON.stringify(options.json);
     }
     const signal = this.resolveSignal(options.signal, options.timeoutMs);
-    return this.fetchImpl(this.urlFor(path), { method, headers, body, signal, redirect: "follow" });
+    return this.fetchImpl(url, { method, headers, body, signal, redirect: "follow" });
   }
 
   private async parseOrRaise<T>(response: Response, ok: readonly number[]): Promise<T> {

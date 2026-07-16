@@ -11,6 +11,7 @@
  */
 
 import type { ComfyLow, Job as LowJob, Output as LowOutput } from "../low/index.js";
+import { abortableSleep } from "./abortable-sleep.js";
 import { backoffSchedule, isTerminal, SUCCESS } from "./core.js";
 import { eventFromRaw, type ComfyEvent, type StatusChange } from "./events.js";
 import { JobFailed, translate } from "./exceptions.js";
@@ -54,50 +55,58 @@ export class Job {
   }
 
   /** Poll `GET /api/v2/jobs/{id}` once and adopt the fresh state. */
-  async refresh(): Promise<this> {
-    this.model = await translate(() => this.low.getJob(this.model.urls.self || this.model.id));
+  async refresh(signal?: AbortSignal): Promise<this> {
+    this.model = await translate(() =>
+      this.low.getJob(this.model.urls.self || this.model.id, { signal }),
+    );
     return this;
   }
 
   /** Poll to a terminal state (adaptive backoff). Rejects with a
-   * `TimeoutError` if `timeoutMs` elapses first. */
-  async wait(timeoutMs?: number): Promise<this> {
+   * `TimeoutError` if `timeoutMs` elapses first, or immediately if `signal`
+   * aborts — the abort interrupts the backoff wait itself, not just the
+   * in-flight poll request. */
+  async wait(timeoutMs?: number, signal?: AbortSignal): Promise<this> {
     const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
     const backoff = backoffSchedule();
     for (;;) {
-      await this.refresh();
+      await this.refresh(signal);
       if (isTerminal(this.status)) return this;
       if (deadline !== undefined && Date.now() >= deadline) {
         throw new Error(`job ${this.id} not terminal after ${timeoutMs}ms (status=${this.status})`);
       }
-      await sleep(backoff.next().value);
+      await abortableSleep(backoff.next().value, signal);
     }
   }
 
   /** Wait for terminal, then throw `JobFailed` unless it succeeded. */
-  async result(): Promise<this> {
-    await this.wait();
+  async result(signal?: AbortSignal): Promise<this> {
+    await this.wait(undefined, signal);
     if (this.status !== SUCCESS) {
       throw new JobFailed(`job ${this.id} ended ${this.status}`, { error: this.model.error });
     }
     return this;
   }
 
-  async cancel(): Promise<this> {
-    this.model = await translate(() => this.low.cancelJob(this.model.urls.cancel || this.model.id));
+  async cancel(signal?: AbortSignal): Promise<this> {
+    this.model = await translate(() =>
+      this.low.cancelJob(this.model.urls.cancel || this.model.id, { signal }),
+    );
     return this;
   }
 
   /**
    * Typed live event iterator. Auto-reconnects with no replay; falls back
-   * to polling to detect terminal status if the stream ends early.
+   * to polling to detect terminal status if the stream ends early. An
+   * aborted `signal` stops both the current SSE connection/poll and the
+   * pause between reconnect attempts.
    */
-  async *events(): AsyncGenerator<ComfyEvent, void, void> {
+  async *events(signal?: AbortSignal): AsyncGenerator<ComfyEvent, void, void> {
     const eventsUrl = this.model.urls.events || this.model.id;
     for (;;) {
       let terminalSeen = false;
       try {
-        for await (const raw of this.low.getJobEvents(eventsUrl)) {
+        for await (const raw of this.low.getJobEvents(eventsUrl, { signal })) {
           const event = eventFromRaw(raw, (data) => this.bindOutput(data as unknown as LowOutput));
           if (event === null) continue;
           if (event.kind === "statusChange" && isTerminal(event.status)) {
@@ -107,13 +116,16 @@ export class Job {
           }
           yield event;
         }
-      } catch {
+      } catch (exc) {
+        // A caller abort must propagate (and stop the loop), not be
+        // swallowed as an ordinary mid-stream drop.
+        if (signal?.aborted) throw exc;
         // Connection dropped mid-stream — reconnect below.
       }
       if (terminalSeen) return;
       // Stream ended without a terminal frame. Poll the authoritative
       // state: stop if already terminal, else reconnect for fresh frames.
-      await this.refresh();
+      await this.refresh(signal);
       if (isTerminal(this.status)) {
         const statusChange: StatusChange = {
           kind: "statusChange",
@@ -123,7 +135,7 @@ export class Job {
         yield statusChange;
         return;
       }
-      await sleep(RECONNECT_PAUSE_MS);
+      await abortableSleep(RECONNECT_PAUSE_MS, signal);
     }
   }
 }
@@ -138,8 +150,4 @@ export class JobFactory {
   async get(jobId: string): Promise<Job> {
     return new Job(this.low, await translate(() => this.low.getJob(jobId)));
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

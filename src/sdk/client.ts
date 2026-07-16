@@ -31,6 +31,7 @@
 
 import type { AssetReference } from "../low/index.js";
 import { ApiError, ComfyLow, type ComfyLowOptions } from "../low/index.js";
+import { abortableSleep } from "./abortable-sleep.js";
 import { AssetFactory } from "./assets.js";
 import {
   findAssetHandles,
@@ -64,10 +65,6 @@ function guardUiFormat(workflow: Workflow): void {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export class Comfy {
   private readonly low: ComfyLow;
   readonly assets: AssetFactory;
@@ -84,11 +81,11 @@ export class Comfy {
     this.jobs = new JobFactory(this.low);
   }
 
-  private async materialize(workflow: Workflow): Promise<WorkflowGraph> {
+  private async materialize(workflow: Workflow, signal?: AbortSignal): Promise<WorkflowGraph> {
     const handles = findAssetHandles(workflow.json);
     const refs = new Map<AssetHandleLike, AssetReference>();
     for (const handle of handles) {
-      refs.set(handle, await handle.asReference());
+      refs.set(handle, await handle.asReference(signal));
     }
     return substituteAssetHandles(workflow.json, refs) as WorkflowGraph;
   }
@@ -96,22 +93,29 @@ export class Comfy {
   /**
    * Submit a workflow. Auto-generates an idempotency key (so a timed-out
    * submit is safely retryable) and retries `queue_full` with
-   * `Retry-After`.
+   * `Retry-After`. An aborted `signal` stops asset materialization, the
+   * submit request, and the `queue_full` retry pause.
    */
-  async submit(workflow: Workflow, options: { idempotencyKey?: string } = {}): Promise<Job> {
+  async submit(
+    workflow: Workflow,
+    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
+  ): Promise<Job> {
     guardUiFormat(workflow);
-    const graph = await this.materialize(workflow);
+    const graph = await this.materialize(workflow, options.signal);
     const key = options.idempotencyKey ?? newIdempotencyKey();
     const deadline = Date.now() + QUEUE_RETRY_BUDGET_MS;
     for (;;) {
       try {
-        const { job } = await this.low.postJobs(graph, { idempotencyKey: key });
+        const { job } = await this.low.postJobs(graph, {
+          idempotencyKey: key,
+          signal: options.signal,
+        });
         return new Job(this.low, job);
       } catch (exc) {
         if (!(exc instanceof ApiError)) throw exc;
         const err = toSdkError(exc);
         if (err instanceof QueueFull && Date.now() < deadline) {
-          await sleep((err.retryAfter || DEFAULT_RETRY_AFTER_S) * 1000);
+          await abortableSleep((err.retryAfter || DEFAULT_RETRY_AFTER_S) * 1000, options.signal);
           continue;
         }
         throw err;
@@ -120,14 +124,19 @@ export class Comfy {
   }
 
   /** Submit, then poll to terminal (authoritative). Throws on failure. */
-  async run(workflow: Workflow, options: { timeoutMs?: number } = {}): Promise<Job> {
-    const job = await this.submit(workflow);
-    return options.timeoutMs === undefined ? job.result() : runWithTimeout(job, options.timeoutMs);
+  async run(
+    workflow: Workflow,
+    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<Job> {
+    const job = await this.submit(workflow, { signal: options.signal });
+    return options.timeoutMs === undefined
+      ? job.result(options.signal)
+      : runWithTimeout(job, options.timeoutMs, options.signal);
   }
 }
 
-async function runWithTimeout(job: Job, timeoutMs: number): Promise<Job> {
-  await job.wait(timeoutMs);
+async function runWithTimeout(job: Job, timeoutMs: number, signal?: AbortSignal): Promise<Job> {
+  await job.wait(timeoutMs, signal);
   if (job.status !== SUCCESS) {
     throw new JobFailed(`job ${job.id} ended ${job.status}`, { error: job.error });
   }

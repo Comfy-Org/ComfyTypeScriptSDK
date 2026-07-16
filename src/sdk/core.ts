@@ -55,7 +55,7 @@ export const ASSET_HANDLE = Symbol("comfy.assetHandle");
 
 export interface AssetHandleLike {
   readonly [ASSET_HANDLE]: true;
-  asReference(): Promise<AssetReference>;
+  asReference(signal?: AbortSignal): Promise<AssetReference>;
 }
 
 function isAssetHandle(value: unknown): value is AssetHandleLike {
