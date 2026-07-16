@@ -1,20 +1,17 @@
 openapi: 3.0.3
 # =============================================================================
-# Comfy API v2 — canonical contract (BE-3119)
+# Comfy API v2 — canonical contract
 #
 # This file is the single machine-readable source of truth for the /api/v2/
-# surface, transcribed from the "API v2 & SDK Design — Running Workflows"
-# design (Comfy SDK TDD). One contract, three implementations:
+# surface. One contract, three implementations:
 #
-#   - Comfy Cloud        (services/public-api)
-#   - Serverless gateway (custom-distribution execution on RunPod)
-#   - comfy-api-proxy    (self-hosted; separate public repo, receives a
-#                         FILTERED copy of this file via a sync workflow)
+#   - Comfy Cloud
+#   - Serverless deployments (custom-distribution execution)
+#   - comfy-api-proxy (self-hosted)
 #
-# In-repo consumers point oapi-codegen directly at this path — do not copy it
-# into service directories. Operations tagged `internal` (and anything with
-# x-internal: true) are stripped before this file is projected anywhere
-# public. See api/v2/README.md for conventions and pinned decisions.
+# This is a vendored, filtered copy: operations tagged `internal` (and
+# anything with `x-internal: true`) are stripped before this file is synced
+# here. See spec/README.md in this repo for the sync contract.
 # =============================================================================
 info:
   title: Comfy API v2
@@ -24,7 +21,7 @@ info:
     external applications: upload inputs, submit a workflow, observe
     execution, retrieve results.
 
-    Design principles (see the Comfy SDK TDD for the full rationale):
+    Design principles:
     - **Poll-first.** Every capability is reachable via plain GET polling;
       the SSE stream is a live enhancement, never the source of truth.
     - **Everything is resumable.** Submission is idempotent; job state and
@@ -42,7 +39,7 @@ servers:
   - url: https://api.comfy.org
     description: Comfy Cloud
   - url: https://{deployment}.comfy.org
-    description: Serverless deployment (URL shape not final — BE-3120)
+    description: Serverless deployment (URL shape not final)
     variables:
       deployment:
         default: my-deployment
@@ -75,7 +72,7 @@ paths:
         polls `GET /api/v2/assets/{id}` until ready.
 
         ~100 MB single-request expectation for v1; chunked/resumable large
-        uploads are a deliberate open question in the TDD.
+        uploads are a deliberate open question, deferred post-v1.
       x-streaming-upload: true
       x-idempotency-key: recommended
       parameters:
