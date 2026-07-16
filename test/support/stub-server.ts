@@ -31,6 +31,12 @@ export interface ServerState {
   jobUrlsOrigin: string | null;
   /** POST /jobs returns 429 queue_full this many times before succeeding. */
   queueFullTimes: number;
+  /**
+   * The `Retry-After` header value sent with a `queue_full` response.
+   * Defaults to the delay-seconds form ("0"); set to an HTTP-date string to
+   * exercise the client's fallback for a form it does not parse.
+   */
+  retryAfterHeader: string;
   /** POST /jobs returns this error envelope instead of 201. */
   jobError: { status: number; code: string } | null;
   /** Number of GET /jobs/{id} polls before the job reports terminal. */
@@ -39,6 +45,23 @@ export interface ServerState {
   terminalStatus: string;
   /** SSE behavior: "reconnect" drops the first stream before terminal. */
   sseMode: "normal" | "reconnect";
+  /**
+   * When set, `GET /assets/{id}/content` responds with a 302 redirecting to
+   * this origin (same path) instead of serving `contentBytes` directly —
+   * lets a test simulate a redirect to a different host (e.g. a signed CDN
+   * URL) and check what does/doesn't follow the client there.
+   */
+  contentRedirectOrigin: string | null;
+  /**
+   * Overrides the `hash` field returned by `GET /assets/{id}`. `undefined`
+   * (the default) uses `serverHash` as before; an explicit `null` simulates
+   * a server model with no hash on record.
+   */
+  getAssetHashOverride: string | null | undefined;
+  /** When true, `GET /jobs/{id}` never responds — simulates a hung backend
+   * so a test can assert an aborted caller signal cancels the in-flight
+   * request instead of waiting it out. */
+  hangJobPoll: boolean;
 
   // --- counters tests assert on ---
   uploadCount: number;
@@ -66,10 +89,14 @@ function defaultState(): ServerState {
     requireAuth: false,
     jobUrlsOrigin: null,
     queueFullTimes: 0,
+    retryAfterHeader: "0",
     jobError: null,
     pollsToSucceed: 1,
     terminalStatus: "succeeded",
     sseMode: "normal",
+    contentRedirectOrigin: null,
+    getAssetHashOverride: undefined,
+    hangJobPoll: false,
     uploadCount: 0,
     uploadDataEvents: 0,
     fromHashCount: 0,
@@ -84,7 +111,7 @@ function defaultState(): ServerState {
   };
 }
 
-function assetJson(id: string, hash: string, createdNew: boolean, size: number) {
+function assetJson(id: string, hash: string | null, createdNew: boolean, size: number) {
   return {
     id,
     hash,
@@ -227,12 +254,14 @@ export class StubServer {
     if (req.method === "GET") {
       let m = /^\/api\/v2\/assets\/([^/]+)\/content$/.exec(path);
       if (m) {
-        this.serveContent(req, res);
+        this.serveContent(req, res, path);
         return;
       }
       m = /^\/api\/v2\/assets\/([^/]+)$/.exec(path);
       if (m) {
-        sendJson(res, 200, assetJson(m[1], state.serverHash, false, 33));
+        const hash =
+          state.getAssetHashOverride !== undefined ? state.getAssetHashOverride : state.serverHash;
+        sendJson(res, 200, assetJson(m[1], hash, false, 33));
         return;
       }
       m = /^\/api\/v2\/jobs\/([^/]+)\/events$/.exec(path);
@@ -275,7 +304,12 @@ export class StubServer {
     sendError(res, 404, "not_found");
   }
 
-  private serveContent(req: IncomingMessage, res: ServerResponse): void {
+  private serveContent(req: IncomingMessage, res: ServerResponse, path: string): void {
+    if (this.state.contentRedirectOrigin) {
+      res.writeHead(302, { Location: `${this.state.contentRedirectOrigin}${path}` });
+      res.end();
+      return;
+    }
     const data = this.state.contentBytes;
     const range = req.headers.range;
     if (typeof range === "string") {
@@ -302,6 +336,7 @@ export class StubServer {
 
   private serveJob(jobId: string, res: ServerResponse): void {
     const state = this.state;
+    if (state.hangJobPoll) return; // never respond; the caller must abort client-side
     state.jobPollCount += 1;
     const terminal = state.jobPollCount >= state.pollsToSucceed;
     const status = terminal ? state.terminalStatus : "running";
@@ -376,7 +411,7 @@ export class StubServer {
         res,
         429,
         { error: { code: "queue_full", message: "full" } },
-        { "Retry-After": "0" },
+        { "Retry-After": state.retryAfterHeader },
       );
       return;
     }

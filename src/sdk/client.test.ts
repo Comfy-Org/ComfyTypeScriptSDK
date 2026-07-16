@@ -70,6 +70,14 @@ describe("Comfy", () => {
     expect(server.state.submitCount).toBe(1); // no retry loop for a non-queue_full error
   });
 
+  it("run() with a timeoutMs that elapses before completion rejects with the raw wait() timeout, not JobFailed", async () => {
+    server.state.pollsToSucceed = 1_000_000; // never terminal within the test
+    const wf = client.workflows.fromJson({ "1": {} });
+    // A deadline shorter than the first poll backoff step (500ms) so it
+    // trips on the very first check, keeping the test fast.
+    await expect(client.run(wf, { timeoutMs: 50 })).rejects.toThrow(/not terminal after 50ms/);
+  });
+
   it("downloads a byte range of an output", async () => {
     server.state.contentBytes = Buffer.from("abcdefghij");
     server.state.pollsToSucceed = 1;

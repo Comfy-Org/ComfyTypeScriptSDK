@@ -92,6 +92,18 @@ describe("AssetFactory / Asset", () => {
     expect(asset.createdNew).toBe(false);
   });
 
+  it("get() rehydrates a model with no recorded hash: hash() resolves to an empty string, not a real hash", async () => {
+    // `adopt()` only sets the cached hash when the server model carries one
+    // (`if (asset.hash) ...`); this pins what happens when it does not — the
+    // rehydrated handle has no bytes to hash locally, so `hash()` must
+    // resolve via the model's (empty) value instead of throwing or trying
+    // to open a file/stream that was never opener'd in the first place.
+    server.state.getAssetHashOverride = null;
+    const asset = await assets.get("asset_existing");
+    expect(asset.id).toBe("asset_existing");
+    await expect(asset.hash()).resolves.toBe("");
+  });
+
   it("fromStream buffers a Node Readable, then commits like any other source", async () => {
     const { Readable } = await import("node:stream");
     const stream = Readable.from([Buffer.from("chunk-1-"), Buffer.from("chunk-2")]);

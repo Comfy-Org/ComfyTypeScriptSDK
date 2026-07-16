@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { StubServer } from "../../test/support/stub-server.js";
-import { BlobNotFound, HashMismatch, Unauthorized } from "./errors.js";
+import { BlobNotFound, HashMismatch, QueueFull, Unauthorized } from "./errors.js";
 import { ComfyLow } from "./transport.js";
 
 describe("ComfyLow transport", () => {
@@ -166,4 +166,59 @@ describe("ComfyLow transport", () => {
       await attacker.stop();
     }
   });
+
+  // -- cross-origin bearer-token leak via an HTTP redirect ------------------
+
+  it("does not forward the bearer token when a content download 302-redirects cross-origin", async () => {
+    const authed = new ComfyLow(server.baseUrl, "top-secret-key");
+    const attacker = new StubServer();
+    await attacker.start();
+    try {
+      attacker.state.contentBytes = Buffer.from("redirected-bytes");
+      server.state.contentRedirectOrigin = attacker.baseUrl;
+
+      const response = await authed.getAssetContent("asset_1");
+
+      // The redirect was followed all the way to a 200 from the attacker.
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("redirected-bytes");
+
+      // The initial (same-origin) request to `server` carried the token...
+      expect(server.state.lastAuthorizationHeader).toBe("Bearer top-secret-key");
+      // ...but the platform `fetch` (undici) strips `Authorization` before
+      // re-issuing the request to a different origin on redirect — this SDK
+      // does not implement that stripping itself, it relies on the runtime.
+      // Pinning it here so a Node/undici upgrade that changed this guarantee
+      // would be caught by CI rather than discovered as a leak in the wild.
+      expect(attacker.state.lastAuthorizationHeader).toBeNull();
+    } finally {
+      await attacker.stop();
+    }
+  });
+
+  // -- Retry-After parsing ---------------------------------------------------
+
+  it("falls back to a null retryAfter (not NaN) for a Retry-After in HTTP-date form", async () => {
+    server.state.queueFullTimes = 1;
+    server.state.retryAfterHeader = "Wed, 21 Oct 2026 07:28:00 GMT";
+    const err = await low.postJobs({ "1": {} }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(QueueFull);
+    expect((err as QueueFull).retryAfter).toBeNull();
+  });
+
+  // -- AbortSignal composition ------------------------------------------------
+
+  it("an aborted caller signal cancels an in-flight request promptly, not just a later sleep", async () => {
+    server.state.hangJobPoll = true; // never responds; only an abort ends this
+    const controller = new AbortController();
+    const promise = low.getJob("job_01", { signal: controller.signal });
+    setTimeout(() => controller.abort(), 30);
+    const start = Date.now();
+    await expect(promise).rejects.toBeTruthy();
+    // The client's default per-request timeout is 30s; this must reject
+    // right around the abort, proving `AbortSignal.any([caller, timeout])`
+    // actually composes the caller's signal into the request, not just the
+    // default timeout.
+    expect(Date.now() - start).toBeLessThan(500);
+  }, 2000);
 });

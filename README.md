@@ -1,13 +1,14 @@
 # @comfyorg/sdk (TypeScript)
 
-TypeScript SDK for running ComfyUI workflows via the **Comfy API v2** — the
-same code against a self-hosted ComfyUI (through `comfy-api-proxy`), Comfy
-Cloud, or a serverless deployment, changing only the base URL and key.
-
-This mirrors the behavior of the [Python SDK](https://github.com/Comfy-Org/ComfyPythonSDK)
-(`comfy-sdk`): upload/dedup inputs, submit a workflow, wait for it, download
-the outputs — collapsed to a single async client (no separate sync/async
-API; JavaScript is async-native).
+TypeScript SDK for running ComfyUI workflows via the **Comfy API v2**. The
+same code runs against three surfaces — a self-hosted ComfyUI (through
+[`comfy-api-proxy`](https://github.com/Comfy-Org/comfy-api-proxy)), Comfy
+Cloud, or a serverless deployment — changing only the base URL and an
+optional API key. It mirrors the behavior of the
+[Python SDK](https://github.com/Comfy-Org/ComfyPythonSDK) (`comfy-sdk`):
+upload/dedup inputs, submit a workflow, wait for it, download the outputs —
+collapsed here to a single async client (no separate sync/async API;
+JavaScript is async-native).
 
 ```ts
 import { Comfy } from "@comfyorg/sdk";
@@ -23,8 +24,90 @@ const job = await client.run(wf); // submit, then poll to a terminal state
 await job.getOutputs("13")[0].toFile("out.png");
 ```
 
-Live progress, previews, and output-ready notifications are available as a
-typed, auto-reconnecting event stream:
+## Requirements
+
+- **Node >=22.** Node 20 reached end-of-life; browser support is out of
+  scope for v1.
+- **Install:** `@comfyorg/sdk` is not yet published to npm (the publish
+  workflow ships with the repo but is intentionally disabled until the
+  package is registered). Once it is released:
+
+  ```bash
+  npm i @comfyorg/sdk
+  pnpm add @comfyorg/sdk
+  yarn add @comfyorg/sdk
+  ```
+
+  Until then, build it from source (clone this repo, `pnpm install`,
+  `pnpm build`) and reference the built `dist/`.
+
+## Auth, per surface
+
+| Surface                                                            | Auth                                       |
+| ------------------------------------------------------------------ | ------------------------------------------ |
+| Self-hosted proxy (`comfy-api-proxy` in front of your own ComfyUI) | none — do **not** pass `apiKey`            |
+| Comfy Cloud                                                        | `new Comfy(baseUrl, { apiKey: "ck_..." })` |
+| Serverless                                                         | `new Comfy(baseUrl, { apiKey: "ck_..." })` |
+
+The client only attaches the `Authorization` header to requests aimed at its
+own `baseUrl`'s origin. If the server hands back an absolute URL on a
+different host (for example a job's `events`/`cancel` link, or a redirect on
+an asset download), the key is not sent there — see "Typed errors" below for
+the exception classes this surface can raise.
+
+## Quickstart
+
+```ts
+import { Comfy } from "@comfyorg/sdk";
+
+const client = new Comfy("http://127.0.0.1:8189");
+
+const wf = await client.workflows.fromFile("workflow_api.json");
+const job = await client.run(wf); // submit + poll to a terminal state; throws on failure
+const outputs = job.getOutputs("13"); // outputs produced by node "13"
+await outputs[0].toFile("out.png");
+```
+
+`run()` submits and polls to completion in one call. If you want to act on
+the job in between (read `job.status`, stream progress, cancel it), use
+`submit()` and drive the job yourself:
+
+```ts
+const job = await client.submit(wf);
+await job.wait(); // poll to terminal (adaptive backoff); or call job.refresh() yourself
+console.log(job.status, job.outputs);
+```
+
+## Assets and `core/ASSET`
+
+`client.assets.fromFile(path)` / `client.assets.fromBytes(data, options)`
+return a **lazy** asset handle: nothing is hashed or uploaded until the
+handle is actually used. Embed the handle directly in a workflow input with
+`wf.setInput(...)`:
+
+```ts
+const asset = client.assets.fromFile("photo.png");
+wf.setInput("10", "image", asset);
+```
+
+On submit, the SDK walks the workflow graph, finds every embedded handle,
+and for each one: hashes the bytes locally (blake3, via
+[`hash-wasm`](https://www.npmjs.com/package/hash-wasm) — pure WebAssembly,
+no native addon), probes the server's dedup fast path, and only streams a
+full upload if the server does not already have those bytes. Each handle is
+then substituted in place with a `core/ASSET` reference
+(`{ __type: "core/ASSET", info: { id, hash, file_path } }`) before the
+workflow is sent. Re-running a script against unchanged files re-uploads
+nothing.
+
+`client.assets` also has `fromStream`, `fromUrl`, and `get(assetId)` (to
+rehydrate a handle for an asset that is already committed) for less common
+cases — see the type definitions for details.
+
+## Live progress
+
+`job.events()` is a typed, auto-reconnecting async iterator over the job's
+live event stream:
 
 ```ts
 const job = await client.submit(wf);
@@ -42,34 +125,106 @@ for await (const event of job.events()) {
 }
 ```
 
+The stream carries no replay cursor, so a dropped connection is reconnected
+from "now," not replayed from the start. Polling stays the source of truth
+for whether the job is actually done: if the stream is throttled, drops
+permanently, or never even connects, `events()` falls back to polling
+`GET /jobs/{id}` to detect the terminal state, so consumers never hang
+waiting on a stream that isn't coming back. If you only care about the
+final result, `run()`/`job.wait()` (poll-only, no SSE) is simpler.
+
+## Cancellation and timeouts
+
+`submit`, `run`, `wait`, `events`, and `cancel` all accept an `AbortSignal`,
+which stops both the in-flight request _and_ any internal wait (the queue-full
+retry pause, the poll backoff, the SSE reconnect pause) — an abort takes
+effect immediately rather than only after the current network call returns:
+
+```ts
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 30_000); // give up after 30s
+
+const job = await client.submit(wf, { signal: controller.signal });
+await job.wait(undefined, controller.signal);
+```
+
+`run()` also takes a plain `timeoutMs` if you just want a deadline without
+managing an `AbortController` yourself:
+
+```ts
+await client.run(wf, { timeoutMs: 60_000 });
+```
+
+## Typed errors
+
+Protocol-level failures are raised as one exception class per error code, so
+you can catch what you actually expect instead of string-matching messages:
+
+- `Unauthorized`, `Forbidden`, `NotFound`
+- `InvalidWorkflow` (and `WorkflowFormatUi`, for submitting a UI-export
+  instead of an API-format graph)
+- `MissingAsset` — a `core/ASSET` reference the server couldn't resolve
+- `HashMismatch` — uploaded bytes didn't match the declared hash
+- `BlobNotFound`, `IdempotencyConflict`, `IdempotencyKeyReuse`
+- `InsufficientCredits`
+- `QueueFull` (carries `retryAfter`; `submit()` already retries this one
+  transparently)
+- `JobFailed` — a job reached a non-`succeeded` terminal state (carries the
+  node-level `error` detail when the platform provided one)
+
+All extend a shared `ComfyError` (`code`, `httpStatus`, `details`).
+
+```ts
+import { JobFailed, MissingAsset } from "@comfyorg/sdk";
+
+try {
+  await client.run(wf);
+} catch (err) {
+  if (err instanceof JobFailed) {
+    console.error(err.error); // { code, message, node_id, class_type, traceback } | null
+  } else if (err instanceof MissingAsset) {
+    console.error("asset reference was not usable:", err.details);
+  } else {
+    throw err;
+  }
+}
+```
+
 ## Two layers
 
 - **`@comfyorg/sdk`** — the idiomatic client above: asset dedup/upload,
   `core/ASSET` substitution, idempotent submit with queue-full backoff,
   poll-authoritative job completion, typed SSE events, range-aware
-  downloads, and typed errors (`JobFailed`, `QueueFull`, `MissingAsset`, ...).
+  downloads, and typed errors.
 - **`@comfyorg/sdk/low`** — generated types + [Zod](https://zod.dev) schemas
-  (`pnpm generate`, from `spec/openapi.yaml`) plus a hand-written `fetch`
-  transport (`ComfyLow`) with one method per `operationId` and the escape
-  hatches the SDK layer is built on: raw `Response` access, unbuffered
-  streaming bodies (for SSE and range downloads), a streaming multipart
-  upload body, and per-request `AbortSignal`/timeout. Use this directly if
-  you need lower-level control.
+  plus a hand-written `fetch` transport (`ComfyLow`) with one method per API
+  operation and the escape hatches the SDK layer is built on: raw `Response`
+  access, unbuffered streaming bodies (for SSE and range downloads), a
+  streaming multipart upload body, and per-request `AbortSignal`/timeout.
+  Use this directly if you need lower-level control.
+
+The generated part of `low` (`src/low/generated/*`) is produced by
+[`@hey-api/openapi-ts`](https://heyapi.dev) from `spec/openapi.yaml`, a
+vendored, filtered copy of the canonical Comfy API v2 contract (see
+`spec/README.md`). Regenerate it with `pnpm generate` after the spec
+changes; CI fails if the generated code has drifted from the spec.
 
 ## Development
 
 ```bash
-pnpm install
-pnpm generate        # regenerate src/low/generated/* from spec/openapi.yaml
-pnpm build            # tsc -> dist/
+pnpm install --frozen-lockfile
 pnpm lint             # oxlint
 pnpm format:check     # oxfmt --check
 pnpm typecheck        # tsc --noEmit
 pnpm test             # vitest run
+pnpm build            # tsc -> dist/
+```
+
+Other useful scripts:
+
+```bash
+pnpm generate         # regenerate src/low/generated/* from spec/openapi.yaml
+pnpm format           # oxfmt --write
 pnpm test:coverage    # vitest run --coverage
 pnpm check:spec-drift # fails if src/low/generated/* is stale vs. the spec
 ```
-
-`spec/openapi.yaml` is a vendored, filtered copy of the canonical Comfy API
-v2 contract — see `spec/README.md`. Node 22 and 24 only (Node 20 reached
-end-of-life; browser support is out of scope for v1).
