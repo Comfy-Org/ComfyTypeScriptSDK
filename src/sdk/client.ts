@@ -91,10 +91,17 @@ export class Comfy {
   }
 
   /**
-   * Submit a workflow. Auto-generates an idempotency key (so a timed-out
-   * submit is safely retryable) and retries `queue_full` with
-   * `Retry-After`. An aborted `signal` stops asset materialization, the
-   * submit request, and the `queue_full` retry pause.
+   * Submit a workflow. Retries `queue_full` with `Retry-After`. An aborted
+   * `signal` stops asset materialization, the submit request, and the
+   * `queue_full` retry pause.
+   *
+   * Sends an auto-generated `Idempotency-Key` so the server rejects an
+   * accidental exact resend of *this* request (`422 idempotency_key_reuse`)
+   * instead of creating a duplicate job. Each call mints a fresh key, so
+   * calling `submit()` again is a distinct submission — to make a retry
+   * idempotent, pass an explicit `idempotencyKey` and reuse it. Note a reused
+   * key is *rejected*, not replayed: on reuse, catch the error and poll/list
+   * for the job the first attempt already created.
    */
   async submit(
     workflow: Workflow,
