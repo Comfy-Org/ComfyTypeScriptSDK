@@ -1,0 +1,6 @@
+# `oxfmt` reads this file. `src/low/generated/**` is codegen output from
+# `@hey-api/openapi-ts` (`pnpm generate`) — reformatting it would make the
+# committed files diverge from a fresh regeneration byte-for-byte, which is
+# exactly what `scripts/check-spec-drift.mjs` compares. Keep it untouched,
+# the same way the Python SDK excludes its generated models from `ruff`.
+src/low/generated/

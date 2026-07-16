@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { Comfy } from "./index.js";
+import { Comfy, ComfyError, Job, Asset, Workflow } from "./index.js";
 
-describe("Comfy", () => {
-  it("constructs with a base URL and strips a trailing slash", () => {
+describe("public surface", () => {
+  it("constructs a client and exposes assets/workflows/jobs namespaces", () => {
     const client = new Comfy("http://127.0.0.1:8189/");
     expect(client).toBeInstanceOf(Comfy);
+    expect(client.assets).toBeDefined();
+    expect(client.workflows).toBeDefined();
+    expect(client.jobs).toBeDefined();
   });
 
-  it("run() is not implemented yet", async () => {
-    const client = new Comfy("http://127.0.0.1:8189");
-    await expect(client.run({})).rejects.toThrow("not implemented yet");
+  it("exports the idiomatic classes and the shared error base", () => {
+    expect(Job).toBeTypeOf("function");
+    expect(Asset).toBeTypeOf("function");
+    expect(Workflow).toBeTypeOf("function");
+    expect(new ComfyError("boom")).toBeInstanceOf(Error);
   });
 });

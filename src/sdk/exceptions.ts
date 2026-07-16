@@ -1,0 +1,132 @@
+/**
+ * Idiomatic `sdk` exceptions.
+ *
+ * These wrap the protocol-level `low.ApiError` codes with names an
+ * integrator catches directly (`JobFailed`, `QueueFull`, ...). `toSdkError`
+ * maps a raised `ApiError` to the right subclass; anything unmapped stays a
+ * `ComfyError` carrying the original code. Mirrors `comfy_sdk.exceptions`
+ * in the Python SDK.
+ */
+
+import { ApiError } from "../low/index.js";
+import type { JobError } from "../low/index.js";
+
+export interface ComfyErrorOptions {
+  code?: string;
+  httpStatus?: number;
+  details?: Record<string, unknown> | null;
+}
+
+export class ComfyError extends Error {
+  readonly code?: string;
+  readonly httpStatus?: number;
+  readonly details: Record<string, unknown> | null;
+
+  constructor(message: string, options: ComfyErrorOptions = {}) {
+    super(message);
+    this.name = new.target.name;
+    this.code = options.code;
+    this.httpStatus = options.httpStatus;
+    this.details = options.details ?? null;
+  }
+}
+
+/** The surface rejected the request for lack of a valid key. Comfy Cloud
+ * and serverless require a key; a self-hosted proxy needs none. */
+export class Unauthorized extends ComfyError {}
+export class Forbidden extends ComfyError {}
+export class NotFound extends ComfyError {}
+
+/** Structural/validation failure; `details` carries per-node errors. */
+export class InvalidWorkflow extends ComfyError {}
+
+/** UI-export JSON was submitted instead of the API-format graph. */
+export class WorkflowFormatUi extends InvalidWorkflow {}
+
+/** A `core/ASSET` reference was not usable (unknown/unscanned/not owned). */
+export class MissingAsset extends ComfyError {}
+
+/** Uploaded bytes did not match the declared `expectedHash`. */
+export class HashMismatch extends ComfyError {}
+
+/** from-hash / existence probe found no blob the caller can mint from. */
+export class BlobNotFound extends ComfyError {}
+
+/** A concurrent retry of the same idempotency key is still in flight. */
+export class IdempotencyConflict extends ComfyError {}
+
+/** The same idempotency key was reused with a different body. */
+export class IdempotencyKeyReuse extends ComfyError {}
+
+export class InsufficientCredits extends ComfyError {}
+
+/** Backpressure: the queue is full. `retryAfter` is seconds to wait. */
+export class QueueFull extends ComfyError {
+  readonly retryAfter: number;
+
+  constructor(message: string, options: ComfyErrorOptions & { retryAfter: number }) {
+    super(message, options);
+    this.retryAfter = options.retryAfter;
+  }
+}
+
+/**
+ * A job reached a non-success terminal state. `error` carries the
+ * node-level detail (`code`, `nodeId`, `message`, `traceback`) when the
+ * platform provided one.
+ */
+export class JobFailed extends ComfyError {
+  readonly error: JobError | null;
+
+  constructor(message: string, options: { error?: JobError | null } = {}) {
+    super(message, { code: options.error?.code ?? "job_failed" });
+    this.error = options.error ?? null;
+  }
+}
+
+type ComfyErrorClass = new (message: string, options: ComfyErrorOptions) => ComfyError;
+
+const BY_CODE: Record<string, ComfyErrorClass> = {
+  invalid_workflow: InvalidWorkflow,
+  workflow_format_ui: WorkflowFormatUi,
+  missing_asset: MissingAsset,
+  hash_mismatch: HashMismatch,
+  blob_not_found: BlobNotFound,
+  idempotency_key_reuse: IdempotencyKeyReuse,
+  idempotency_conflict: IdempotencyConflict,
+  insufficient_credits: InsufficientCredits,
+  not_found: NotFound,
+  unauthorized: Unauthorized,
+  forbidden: Forbidden,
+};
+
+/** Translate a protocol `ApiError` into the idiomatic SDK exception. */
+export function toSdkError(exc: ApiError): ComfyError {
+  if (exc.code === "queue_full") {
+    return new QueueFull(exc.message, {
+      retryAfter: exc.retryAfter ?? 0,
+      code: exc.code,
+      httpStatus: exc.httpStatus,
+      details: exc.details,
+    });
+  }
+  const cls = BY_CODE[exc.code] ?? ComfyError;
+  return new cls(exc.message, { code: exc.code, httpStatus: exc.httpStatus, details: exc.details });
+}
+
+/**
+ * Run `fn`, re-raising any protocol `ApiError` as its idiomatic SDK
+ * exception. Wrap every `sdk`-level operation that calls into `low` with
+ * this so integrators only ever catch `sdk` exceptions (`MissingAsset`,
+ * `HashMismatch`, `NotFound`, ...), never the raw protocol error.
+ */
+export async function translate<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (exc) {
+    if (exc instanceof ApiError) {
+      throw toSdkError(exc);
+    }
+    throw exc;
+  }
+}
