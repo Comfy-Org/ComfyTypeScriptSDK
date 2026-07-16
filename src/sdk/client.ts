@@ -113,7 +113,7 @@ export class Comfy {
     const deadline = Date.now() + QUEUE_RETRY_BUDGET_MS;
     for (;;) {
       try {
-        const { job } = await this.low.postJobs(graph, {
+        const job = await this.low.postJobs(graph, {
           idempotencyKey: key,
           signal: options.signal,
         });

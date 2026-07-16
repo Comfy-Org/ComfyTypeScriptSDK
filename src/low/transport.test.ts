@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { StubServer } from "../../test/support/stub-server.js";
-import { BlobNotFound, HashMismatch, QueueFull, Unauthorized } from "./errors.js";
+import {
+  BlobNotFound,
+  HashMismatch,
+  IdempotencyKeyReuse,
+  QueueFull,
+  Unauthorized,
+} from "./errors.js";
 import { ComfyLow } from "./transport.js";
 
 describe("ComfyLow transport", () => {
@@ -79,13 +85,13 @@ describe("ComfyLow transport", () => {
     expect(await response.text()).toBe("234");
   });
 
-  it("postJobs replays the same response for a repeated Idempotency-Key", async () => {
+  it("postJobs rejects a reused Idempotency-Key (single-use, no replay)", async () => {
     const key = "idem-key-1";
     const first = await low.postJobs({ "1": {} }, { idempotencyKey: key });
-    const second = await low.postJobs({ "1": {} }, { idempotencyKey: key });
-    expect(first.job.id).toBe(second.job.id);
-    expect(first.replayed).toBe(false);
-    expect(second.replayed).toBe(true);
+    expect(first.id).toMatch(/^job_/);
+    await expect(low.postJobs({ "1": {} }, { idempotencyKey: key })).rejects.toBeInstanceOf(
+      IdempotencyKeyReuse,
+    );
   });
 
   it("getJob polls the authoritative state (no SSE involved)", async () => {

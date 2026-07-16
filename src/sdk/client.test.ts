@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { StubServer } from "../../test/support/stub-server.js";
 import { Comfy } from "./client.js";
-import { QueueFull, WorkflowFormatUi } from "./exceptions.js";
+import { IdempotencyKeyReuse, QueueFull, WorkflowFormatUi } from "./exceptions.js";
 
 describe("Comfy", () => {
   let server: StubServer;
@@ -55,12 +55,14 @@ describe("Comfy", () => {
     expect(server.state.submitCount).toBe(3); // 2 queue_full + 1 success
   });
 
-  it("submit() is idempotent: a retried submit with the same key replays the job", async () => {
+  it("submit() rejects a reused idempotency key (single-use, no replay)", async () => {
     const wf = client.workflows.fromJson({ "1": {} });
     const key = "same-key-please";
     const first = await client.submit(wf, { idempotencyKey: key });
-    const second = await client.submit(wf, { idempotencyKey: key });
-    expect(second.id).toBe(first.id);
+    expect(first.id).toMatch(/^job_/);
+    await expect(client.submit(wf, { idempotencyKey: key })).rejects.toBeInstanceOf(
+      IdempotencyKeyReuse,
+    );
   });
 
   it("propagates job_error as a typed, non-QueueFull error immediately", async () => {

@@ -399,9 +399,9 @@ export class StubServer {
     const key = req.headers["idempotency-key"];
 
     if (typeof key === "string" && state.idempotency.has(key)) {
-      sendJson(res, 201, jobJson(state.idempotency.get(key)!, "queued", [], state.jobUrlsOrigin), {
-        "Idempotency-Replayed": "true",
-      });
+      // Reject-on-duplicate (single-use keys, no replay): any reuse of an
+      // already-claimed key is 422 idempotency_key_reuse.
+      sendError(res, 422, "idempotency_key_reuse", "Idempotency-Key already used");
       return;
     }
 

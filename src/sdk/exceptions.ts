@@ -52,10 +52,9 @@ export class HashMismatch extends ComfyError {}
 /** from-hash / existence probe found no blob the caller can mint from. */
 export class BlobNotFound extends ComfyError {}
 
-/** A concurrent retry of the same idempotency key is still in flight. */
-export class IdempotencyConflict extends ComfyError {}
-
-/** The same idempotency key was reused with a different body. */
+/** The idempotency key was reused. Keys are single-use (reject-on-duplicate,
+ * no replay): any second request with the same key — a retry, a concurrent
+ * duplicate, or the same key with a different body — is rejected. */
 export class IdempotencyKeyReuse extends ComfyError {}
 
 export class InsufficientCredits extends ComfyError {}
@@ -93,7 +92,6 @@ const BY_CODE: Record<string, ComfyErrorClass> = {
   hash_mismatch: HashMismatch,
   blob_not_found: BlobNotFound,
   idempotency_key_reuse: IdempotencyKeyReuse,
-  idempotency_conflict: IdempotencyConflict,
   insufficient_credits: InsufficientCredits,
   not_found: NotFound,
   unauthorized: Unauthorized,

@@ -116,7 +116,7 @@ export const zJob = z.object({
  * Shared error envelope with machine-readable codes. Core codes (v1):
  * `invalid_workflow` (422), `workflow_format_ui` (422),
  * `missing_asset` (422), `hash_mismatch` (409), `blob_not_found`
- * (404), `idempotency_key_reuse` (422), `idempotency_conflict` (409),
+ * (404), `idempotency_key_reuse` (422),
  * `queue_full` (429 + Retry-After), `insufficient_credits` (402),
  * `not_found` (404), `unauthorized` (401), `forbidden` (403).
  *
@@ -130,7 +130,7 @@ export const zErrorEnvelope = z.object({
 });
 
 /**
- * Client-generated UUID (recommended). Stripe semantics; keys expire after 24h.
+ * Client-generated UUID (recommended). Single-use: the first request to present a key is processed; any later request with the same key is rejected `422` `idempotency_key_reuse` (reject-on-duplicate, no response replay). Keys expire after 24h.
  */
 export const zIdempotencyKey = z.string();
 

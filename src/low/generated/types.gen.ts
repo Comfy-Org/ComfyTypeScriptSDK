@@ -48,6 +48,9 @@ export type Job = {
     progress: Progress | null;
     outputs: Array<Output>;
     error: JobError | null;
+    /**
+     * Values are nullable (a metric not yet available — e.g. `execution_ms` before a job starts running — is `null`, not omitted); the example below is deliberately all-non-null purely to work around a Spectral/nimma lint-tooling crash on a literal `null` inside a schema `example` combined with `additionalProperties.nullable: true` — the schema itself is unchanged and still allows null values at runtime.
+     */
     metrics?: {
         [key: string]: number | null;
     };
@@ -129,7 +132,7 @@ export type JobError = {
  * Shared error envelope with machine-readable codes. Core codes (v1):
  * `invalid_workflow` (422), `workflow_format_ui` (422),
  * `missing_asset` (422), `hash_mismatch` (409), `blob_not_found`
- * (404), `idempotency_key_reuse` (422), `idempotency_conflict` (409),
+ * (404), `idempotency_key_reuse` (422),
  * `queue_full` (429 + Retry-After), `insufficient_credits` (402),
  * `not_found` (404), `unauthorized` (401), `forbidden` (403).
  *
@@ -145,7 +148,7 @@ export type ErrorEnvelope = {
 };
 
 /**
- * Client-generated UUID (recommended). Stripe semantics; keys expire after 24h.
+ * Client-generated UUID (recommended). Single-use: the first request to present a key is processed; any later request with the same key is rejected `422` `idempotency_key_reuse` (reject-on-duplicate, no response replay). Keys expire after 24h.
  */
 export type IdempotencyKey = string;
 
@@ -180,7 +183,7 @@ export type PostAssetsData = {
     };
     headers?: {
         /**
-         * Client-generated UUID (recommended). Stripe semantics; keys expire after 24h.
+         * Client-generated UUID (recommended). Single-use: the first request to present a key is processed; any later request with the same key is rejected `422` `idempotency_key_reuse` (reject-on-duplicate, no response replay). Keys expire after 24h.
          */
         'Idempotency-Key'?: string;
     };
@@ -199,13 +202,17 @@ export type PostAssetsErrors = {
      */
     403: ErrorEnvelope;
     /**
-     * `hash_mismatch` or `idempotency_conflict`.
+     * `hash_mismatch`.
      */
     409: ErrorEnvelope;
     /**
      * `idempotency_key_reuse` or validation failure.
      */
     422: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type PostAssetsError = PostAssetsErrors[keyof PostAssetsErrors];
@@ -251,6 +258,10 @@ export type AssetFromHashErrors = {
      * `blob_not_found` — no blob the caller may mint from.
      */
     404: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type AssetFromHashError = AssetFromHashErrors[keyof AssetFromHashErrors];
@@ -289,6 +300,10 @@ export type HeadAssetByHashErrors = {
      * No blob the caller may mint from.
      */
     404: unknown;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type HeadAssetByHashError = HeadAssetByHashErrors[keyof HeadAssetByHashErrors];
@@ -322,6 +337,10 @@ export type GetAssetErrors = {
      * `not_found`.
      */
     404: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type GetAssetError = GetAssetErrors[keyof GetAssetErrors];
@@ -367,6 +386,10 @@ export type GetAssetContentErrors = {
      * Range not satisfiable.
      */
     416: unknown;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type GetAssetContentError = GetAssetContentErrors[keyof GetAssetContentErrors];
@@ -395,7 +418,7 @@ export type PostJobsData = {
     };
     headers?: {
         /**
-         * Client-generated UUID (recommended). Stripe semantics; keys expire after 24h.
+         * Client-generated UUID (recommended). Single-use: the first request to present a key is processed; any later request with the same key is rejected `422` `idempotency_key_reuse` (reject-on-duplicate, no response replay). Keys expire after 24h.
          */
         'Idempotency-Key'?: string;
     };
@@ -418,10 +441,6 @@ export type PostJobsErrors = {
      */
     403: ErrorEnvelope;
     /**
-     * `idempotency_conflict` — concurrent retry in flight.
-     */
-    409: ErrorEnvelope;
-    /**
      * `invalid_workflow` (with per-node details), `workflow_format_ui`, `missing_asset`, or `idempotency_key_reuse`.
      */
     422: ErrorEnvelope;
@@ -429,6 +448,10 @@ export type PostJobsErrors = {
      * `queue_full` — bounded queue depth reached.
      */
     429: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type PostJobsError = PostJobsErrors[keyof PostJobsErrors];
@@ -464,6 +487,10 @@ export type GetJobErrors = {
      * `not_found`.
      */
     404: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type GetJobError = GetJobErrors[keyof GetJobErrors];
@@ -499,6 +526,18 @@ export type GetJobEventsErrors = {
      * `not_found`.
      */
     404: ErrorEnvelope;
+    /**
+     * `too_many_streams` — the caller already has the maximum number of concurrent GET .../events streams open. Close an existing stream (or wait for one to reach a terminal status) before opening another; GET /api/v2/jobs/{id} remains available as a plain poll regardless of this limit.
+     */
+    429: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
+    /**
+     * `not_implemented` — this deployment does not yet serve live event streaming. GET /api/v2/jobs/{id} remains available as a plain poll in the meantime.
+     */
+    501: ErrorEnvelope;
 };
 
 export type GetJobEventsError = GetJobEventsErrors[keyof GetJobEventsErrors];
@@ -534,6 +573,10 @@ export type CancelJobErrors = {
      * `not_found`.
      */
     404: ErrorEnvelope;
+    /**
+     * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
+     */
+    500: ErrorEnvelope;
 };
 
 export type CancelJobError = CancelJobErrors[keyof CancelJobErrors];

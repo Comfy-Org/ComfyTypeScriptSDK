@@ -259,19 +259,18 @@ export class ComfyLow {
 
   // -- jobs -----------------------------------------------------------------
 
-  /** `POST /api/v2/jobs` — returns `{job, replayed}`. */
+  /** `POST /api/v2/jobs`. */
   async postJobs(
     workflow: Record<string, unknown>,
     options: { idempotencyKey?: string; signal?: AbortSignal } = {},
-  ): Promise<{ job: Job; replayed: boolean }> {
+  ): Promise<Job> {
     const headers: Record<string, string> = {};
     if (options.idempotencyKey) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
     const json: PostJobsData["body"] = { workflow };
     const response = await this.request("POST", "/jobs", { headers, json, signal: options.signal });
-    const job = await this.parseOrRaise<Job>(response, [201]);
-    return { job, replayed: response.headers.get("Idempotency-Replayed") === "true" };
+    return this.parseOrRaise<Job>(response, [201]);
   }
 
   /** `GET /api/v2/jobs/{id}` (or an absolute self link). */

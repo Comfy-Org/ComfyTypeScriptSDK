@@ -58,10 +58,6 @@ export class IdempotencyKeyReuse extends ApiError {
   static override readonly code = "idempotency_key_reuse";
 }
 
-export class IdempotencyConflict extends ApiError {
-  static override readonly code = "idempotency_conflict";
-}
-
 export class QueueFull extends ApiError {
   static override readonly code = "queue_full";
 }
@@ -91,7 +87,6 @@ const BY_CODE: Record<string, ApiErrorClass> = {
   hash_mismatch: HashMismatch,
   blob_not_found: BlobNotFound,
   idempotency_key_reuse: IdempotencyKeyReuse,
-  idempotency_conflict: IdempotencyConflict,
   queue_full: QueueFull,
   insufficient_credits: InsufficientCredits,
   not_found: NotFound,
