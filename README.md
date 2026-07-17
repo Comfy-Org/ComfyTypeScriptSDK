@@ -165,7 +165,12 @@ you can catch what you actually expect instead of string-matching messages:
   instead of an API-format graph)
 - `MissingAsset` — a `core/ASSET` reference the server couldn't resolve
 - `HashMismatch` — uploaded bytes didn't match the declared hash
-- `BlobNotFound`, `IdempotencyConflict`, `IdempotencyKeyReuse`
+- `BlobNotFound`
+- `IdempotencyKeyReuse` — the `Idempotency-Key` was reused. `submit()` (and
+  `run()`) attach a fresh key to every call, so an accidental exact resend never
+  runs the workflow twice. Keys are single-use (reject-on-duplicate, no replay),
+  so reusing your own explicit `idempotencyKey` throws this. After an ambiguous
+  failure, poll or list your jobs instead of resubmitting with the same key.
 - `InsufficientCredits`
 - `QueueFull` (carries `retryAfter`; `submit()` already retries this one
   transparently)
