@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tarball: ${{ steps.pack.outputs.tarball }}
+      version: ${{ steps.setver.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -74,6 +75,7 @@ jobs:
       # carries the tag's version. (On a workflow_dispatch dry run there is no
       # release tag; the committed placeholder version is packed as-is.)
       - name: Set version from release tag
+        id: setver
         if: github.event_name == 'release'
         shell: bash
         env:
@@ -81,11 +83,14 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
-          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$'; then
+          # Full SemVer 2.0: X.Y.Z, with an optional -prerelease and an
+          # optional +build-metadata segment (both may be present together).
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
             echo "::error::Release tag '${TAG}' is not a valid version (expected vX.Y.Z)."
             exit 1
           fi
           npm pkg set version="$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Set package.json version = $VERSION"
 
       - name: Build
@@ -151,7 +156,11 @@ jobs:
           # Update this if the package is ever renamed — kept as a literal to
           # avoid trusting the downloaded artifact's contents for this check.
           NAME="@comfyorg/sdk"
-          VER="${GITHUB_REF_NAME#v}"
+          # Use the exact version the build job injected into the packed
+          # tarball, not a second independent derivation from the ref — a
+          # divergence would let this "already published?" check test the
+          # wrong version and silently skip the real publish.
+          VER="${{ needs.build.outputs.version }}"
           STATUS=0
           OUTPUT=$(npm view "${NAME}@${VER}" --json 2>&1) || STATUS=$?
           if [ "$STATUS" -eq 0 ]; then
