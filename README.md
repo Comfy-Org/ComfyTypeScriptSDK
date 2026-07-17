@@ -28,9 +28,7 @@ await job.getOutputs("13")[0].toFile("out.png");
 
 - **Node >=22.** Node 20 reached end-of-life; browser support is out of
   scope for v1.
-- **Install:** `@comfyorg/sdk` is not yet published to npm (the publish
-  workflow ships with the repo but is intentionally disabled until the
-  package is registered). Once it is released:
+- **Install:**
 
   ```bash
   npm i @comfyorg/sdk
@@ -38,8 +36,11 @@ await job.getOutputs("13")[0].toFile("out.png");
   yarn add @comfyorg/sdk
   ```
 
-  Until then, build it from source (clone this repo, `pnpm install`,
-  `pnpm build`) and reference the built `dist/`.
+  Releases are published to npm from a GitHub Release (tag `vX.Y.Z`) by
+  [`.github/workflows/publish.yml`](.github/workflows/publish.yml). To build
+  from source instead (for local development, or to track an unreleased
+  commit), clone this repo, `pnpm install`, `pnpm build`, and reference the
+  built `dist/`.
 
 ## Auth, per surface
 
