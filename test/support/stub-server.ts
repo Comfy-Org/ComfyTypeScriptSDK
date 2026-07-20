@@ -45,6 +45,10 @@ export interface ServerState {
   terminalStatus: string;
   /** SSE behavior: "reconnect" drops the first stream before terminal. */
   sseMode: "normal" | "reconnect";
+  /** Progress value the first (dropped) reconnect stream emits. */
+  firstReconnectProgress: number;
+  /** Progress value the normal / reconnected stream emits. */
+  progressValue: number;
   /**
    * When set, `GET /assets/{id}/content` responds with a 302 redirecting to
    * this origin (same path) instead of serving `contentBytes` directly —
@@ -94,6 +98,8 @@ function defaultState(): ServerState {
     pollsToSucceed: 1,
     terminalStatus: "succeeded",
     sseMode: "normal",
+    firstReconnectProgress: 0.4,
+    progressValue: 0.5,
     contentRedirectOrigin: null,
     getAssetHashOverride: undefined,
     hangJobPoll: false,
@@ -354,12 +360,12 @@ export class StubServer {
     };
 
     if (state.sseMode === "reconnect" && state.eventsConnectCount === 1) {
-      frame("progress", { value: 0.4, nodes_done: 4, nodes_total: 10 });
+      frame("progress", { value: state.firstReconnectProgress, nodes_done: 4, nodes_total: 10 });
       res.end();
       return;
     }
     frame("status", { status: "running" });
-    frame("progress", { value: 0.5, nodes_done: 5, nodes_total: 10 });
+    frame("progress", { value: state.progressValue, nodes_done: 5, nodes_total: 10 });
     frame("output", OUTPUT);
     frame("status", { status: state.terminalStatus });
     res.end();

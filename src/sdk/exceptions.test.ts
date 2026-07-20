@@ -14,6 +14,7 @@ import {
   Unauthorized,
   WorkflowFormatUi,
   toSdkError,
+  translate,
 } from "./exceptions.js";
 
 describe("toSdkError", () => {
@@ -40,5 +41,24 @@ describe("toSdkError", () => {
     const sdkError = toSdkError(apiError);
     expect(sdkError).toBeInstanceOf(QueueFull);
     expect((sdkError as QueueFull).retryAfter).toBe(5);
+  });
+});
+
+describe("translate", () => {
+  it("re-raises a protocol ApiError as its idiomatic SDK exception", async () => {
+    const failing = () =>
+      Promise.reject(new ApiError("gone", { code: "not_found", httpStatus: 404 }));
+    await expect(translate(failing)).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it("passes a non-ApiError through unchanged (same instance, not wrapped)", async () => {
+    const original = new TypeError("fetch failed");
+    let caught: unknown;
+    try {
+      await translate(() => Promise.reject(original));
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBe(original); // identity preserved; not coerced into a ComfyError
   });
 });
