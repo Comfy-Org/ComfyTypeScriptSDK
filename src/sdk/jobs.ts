@@ -103,12 +103,21 @@ export class Job {
    */
   async *events(signal?: AbortSignal): AsyncGenerator<ComfyEvent, void, void> {
     const eventsUrl = this.model.urls.events || this.model.id;
+    // Progress is monotonic across the whole stream, reconnects included: a
+    // frame whose value regresses (e.g. a lower value replayed by the server
+    // after a mid-stream drop) is suppressed so a consumer's progress never
+    // goes backwards.
+    let lastProgress = Number.NEGATIVE_INFINITY;
     for (;;) {
       let terminalSeen = false;
       try {
         for await (const raw of this.low.getJobEvents(eventsUrl, { signal })) {
           const event = eventFromRaw(raw, (data) => this.bindOutput(data as unknown as LowOutput));
           if (event === null) continue;
+          if (event.kind === "progress") {
+            if (event.value < lastProgress) continue;
+            lastProgress = event.value;
+          }
           if (event.kind === "statusChange" && isTerminal(event.status)) {
             terminalSeen = true;
             yield event;

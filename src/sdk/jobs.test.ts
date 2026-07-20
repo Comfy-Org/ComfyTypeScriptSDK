@@ -82,6 +82,21 @@ describe("Job", () => {
     expect(server.state.eventsConnectCount).toBe(1);
   });
 
+  it("events() suppresses a progress value that regresses across a reconnect (monotonic)", async () => {
+    server.state.sseMode = "reconnect";
+    server.state.pollsToSucceed = 100; // force a real second SSE connection
+    server.state.firstReconnectProgress = 0.5; // the dropped first stream is higher
+    server.state.progressValue = 0.2; // the reconnected stream replays a LOWER value
+    const job = await jobs.get("job_01");
+    const progressValues: number[] = [];
+    for await (const event of job.events()) {
+      if (event.kind === "progress") progressValues.push(event.value);
+    }
+    // The regressed 0.2 is dropped — a consumer's progress never goes backwards.
+    expect(progressValues).toEqual([0.5]);
+    expect(server.state.eventsConnectCount).toBe(2);
+  });
+
   it("wait() stops promptly when its AbortSignal aborts during the poll backoff, instead of hanging", async () => {
     server.state.pollsToSucceed = 1_000_000; // never terminal via polling
     const job = await jobs.get("job_01");
