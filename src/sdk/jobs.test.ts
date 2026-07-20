@@ -69,6 +69,19 @@ describe("Job", () => {
     expect(server.state.eventsConnectCount).toBe(2);
   });
 
+  it("events() settles from the poll backstop without a second SSE connection when the drop leaves the job already terminal", async () => {
+    server.state.sseMode = "reconnect"; // first stream drops before a terminal frame
+    server.state.pollsToSucceed = 1; // the very next poll already reports terminal
+    const job = await jobs.get("job_01");
+    let terminal = false;
+    for await (const event of job.events()) {
+      if (event.kind === "statusChange" && event.status === "succeeded") terminal = true;
+    }
+    expect(terminal).toBe(true);
+    // The poll backstop resolved the terminal state, so no reconnect happened.
+    expect(server.state.eventsConnectCount).toBe(1);
+  });
+
   it("wait() stops promptly when its AbortSignal aborts during the poll backoff, instead of hanging", async () => {
     server.state.pollsToSucceed = 1_000_000; // never terminal via polling
     const job = await jobs.get("job_01");
