@@ -179,4 +179,12 @@ jobs:
       # `--provenance` is implied by trusted publishing but kept explicit.
       - name: Publish to npm
         if: steps.check_npm.outputs.exists == 'false'
-        run: npm publish dist-pack/*.tgz --access public --provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          tarball="$(ls dist-pack/*.tgz)"
+          # Prefix with ./ so npm treats this as a local file path. Without it,
+          # "dist-pack/<file>.tgz" matches npm's "<owner>/<repo>" GitHub
+          # shorthand, so npm tries to git-fetch "github:dist-pack/<file>" and
+          # fails with EALLOWGIT instead of publishing the packed tarball.
+          npm publish "./${tarball}" --access public --provenance
