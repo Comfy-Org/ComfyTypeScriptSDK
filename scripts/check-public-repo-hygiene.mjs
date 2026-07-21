@@ -79,6 +79,12 @@ const PUBLIC_COMFY_ORG_REPOS = new Set([
   "comfy-api-proxy",
   "comfy-cloud-mcp-server",
 ]);
+// CODEOWNERS team handles (`@Comfy-Org/<team>`) are inherently public on a
+// public repo -- GitHub renders the CODEOWNERS owners to anyone who can see the
+// repo, so listing them here is not a leak. These mirror the sibling repos'
+// CODEOWNERS (e.g. comfy-api-proxy). An `@Comfy-Org/<team>` handle NOT in this
+// set is still flagged, so a genuinely-internal team reference surfaces.
+const PUBLIC_COMFY_ORG_TEAMS = new Set(["comfy-cloud-team", "core-engine-team"]);
 const REPO_REF_RE = /Comfy-Org\/([A-Za-z0-9_.-]+)/g;
 
 function trackedFiles() {
@@ -124,10 +130,21 @@ function checkFile(rel) {
     }
 
     for (const match of line.matchAll(REPO_REF_RE)) {
-      const repo = match[1];
-      if (!PUBLIC_COMFY_ORG_REPOS.has(repo)) {
+      const name = match[1];
+      // A leading `@` makes this a CODEOWNERS team handle, not a repo ref.
+      if (match.index > 0 && line[match.index - 1] === "@") {
+        if (!PUBLIC_COMFY_ORG_TEAMS.has(name)) {
+          findings.push(
+            `${rel}:${lineno}: reference to @Comfy-Org/${name}, a team not in the known-public ` +
+              "allowlist (scripts/check-public-repo-hygiene.mjs) -- confirm it's public and add it, " +
+              "or remove the reference",
+          );
+        }
+        continue;
+      }
+      if (!PUBLIC_COMFY_ORG_REPOS.has(name)) {
         findings.push(
-          `${rel}:${lineno}: reference to Comfy-Org/${repo}, which is not in the known-public ` +
+          `${rel}:${lineno}: reference to Comfy-Org/${name}, which is not in the known-public ` +
             "allowlist (scripts/check-public-repo-hygiene.mjs) -- confirm it's public and add it, " +
             "or remove the reference",
         );

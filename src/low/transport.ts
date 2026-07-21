@@ -259,16 +259,29 @@ export class ComfyLow {
 
   // -- jobs -----------------------------------------------------------------
 
-  /** `POST /api/v2/jobs`. */
+  /**
+   * `POST /api/v2/jobs`. `extraData` (e.g. the partner-node API key) is a
+   * sibling of `workflow` on the wire, per the spec's closed `extra_data`
+   * object; omitted entirely when not provided, never sent empty.
+   */
   async postJobs(
     workflow: Record<string, unknown>,
-    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
+    options: {
+      idempotencyKey?: string;
+      extraData?: PostJobsData["body"]["extra_data"];
+      signal?: AbortSignal;
+    } = {},
   ): Promise<Job> {
     const headers: Record<string, string> = {};
     if (options.idempotencyKey) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
     const json: PostJobsData["body"] = { workflow };
+    // Only attach a non-empty extra_data — never serialize an empty object onto
+    // the wire (mirrors the Python low layer's truthy guard).
+    if (options.extraData && Object.keys(options.extraData).length > 0) {
+      json.extra_data = options.extraData;
+    }
     const response = await this.request("POST", "/jobs", { headers, json, signal: options.signal });
     return this.parseOrRaise<Job>(response, [201]);
   }

@@ -38,6 +38,31 @@ describe("Comfy", () => {
     });
   });
 
+  it("submit() with apiKey sends extra_data.api_key_comfy_org alongside workflow", async () => {
+    const wf = client.workflows.fromJson({ "1": {} });
+    await client.submit(wf, { apiKey: "comfyui-test-key" });
+
+    expect(server.state.lastPostJobsBody).toMatchObject({
+      extra_data: { api_key_comfy_org: "comfyui-test-key" },
+    });
+  });
+
+  it("submit() without apiKey sends no extra_data key at all", async () => {
+    const wf = client.workflows.fromJson({ "1": {} });
+    await client.submit(wf);
+
+    expect(server.state.lastPostJobsBody).not.toBeNull();
+    expect(server.state.lastPostJobsBody).not.toHaveProperty("extra_data");
+  });
+
+  it("submit() with an empty-string apiKey sends no extra_data (matches the Python SDK)", async () => {
+    const wf = client.workflows.fromJson({ "1": {} });
+    await client.submit(wf, { apiKey: "" });
+
+    expect(server.state.lastPostJobsBody).not.toBeNull();
+    expect(server.state.lastPostJobsBody).not.toHaveProperty("extra_data");
+  });
+
   it("run() submits and polls to completion end-to-end", async () => {
     server.state.pollsToSucceed = 2;
     const wf = client.workflows.fromJson({ "1": {} });

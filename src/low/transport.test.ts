@@ -94,6 +94,24 @@ describe("ComfyLow transport", () => {
     );
   });
 
+  it("postJobs sends extra_data.api_key_comfy_org as a sibling of workflow when extraData is given", async () => {
+    await low.postJobs({ "1": {} }, { extraData: { api_key_comfy_org: "comfyui-test-key" } });
+    expect(server.state.lastPostJobsBody).toMatchObject({
+      workflow: { "1": {} },
+      extra_data: { api_key_comfy_org: "comfyui-test-key" },
+    });
+  });
+
+  it("postJobs omits extra_data entirely when no extraData is given", async () => {
+    await low.postJobs({ "1": {} });
+    expect(server.state.lastPostJobsBody).not.toHaveProperty("extra_data");
+  });
+
+  it("postJobs omits extra_data when given an explicitly empty object (never an empty object on the wire)", async () => {
+    await low.postJobs({ "1": {} }, { extraData: {} });
+    expect(server.state.lastPostJobsBody).not.toHaveProperty("extra_data");
+  });
+
   it("getJob polls the authoritative state (no SSE involved)", async () => {
     server.state.pollsToSucceed = 3;
     let job = await low.getJob("job_01");

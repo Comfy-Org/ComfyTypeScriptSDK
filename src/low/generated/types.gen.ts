@@ -411,6 +411,15 @@ export type PostJobsData = {
         workflow: {
             [key: string]: unknown;
         };
+        /**
+         * Optional typed extras submitted alongside the workflow. Closed: only the enumerated properties are accepted.
+         */
+        extra_data?: {
+            /**
+             * API key for partner (API) nodes.
+             */
+            api_key_comfy_org?: string;
+        };
     };
     headers?: {
         /**

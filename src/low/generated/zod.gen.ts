@@ -198,7 +198,10 @@ export const zGetAssetContentPath = z.object({
 export const zGetAssetContentResponse = z.string();
 
 export const zPostJobsBody = z.object({
-    workflow: z.record(z.string(), z.unknown())
+    workflow: z.record(z.string(), z.unknown()),
+    extra_data: z.object({
+        api_key_comfy_org: z.string().optional()
+    }).optional()
 });
 
 export const zPostJobsHeaders = z.object({

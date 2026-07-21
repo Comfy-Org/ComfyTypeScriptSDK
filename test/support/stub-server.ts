@@ -76,6 +76,12 @@ export interface ServerState {
   eventsConnectCount: number;
   submitCount: number;
   lastWorkflow: Record<string, unknown> | null;
+  /**
+   * The full parsed JSON body of the most recent `POST /jobs`, so a test can
+   * assert on `extra_data` — both its value when sent, and that the key is
+   * genuinely absent (not just `undefined`) when no `apiKey` was supplied.
+   */
+  lastPostJobsBody: Record<string, unknown> | null;
   lastUploadContentLength: number | null;
   idempotency: Map<string, string>;
   /** The raw `Authorization` header value of the most recent request, or
@@ -111,6 +117,7 @@ function defaultState(): ServerState {
     eventsConnectCount: 0,
     submitCount: 0,
     lastWorkflow: null,
+    lastPostJobsBody: null,
     lastUploadContentLength: null,
     idempotency: new Map(),
     lastAuthorizationHeader: null,
@@ -400,8 +407,9 @@ export class StubServer {
     const state = this.state;
     state.submitCount += 1;
     const raw = (await readBody(req)).toString("utf-8");
-    const body = raw ? (JSON.parse(raw) as { workflow?: Record<string, unknown> }) : {};
-    state.lastWorkflow = body.workflow ?? null;
+    const body: Record<string, unknown> = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    state.lastWorkflow = (body.workflow as Record<string, unknown> | undefined) ?? null;
+    state.lastPostJobsBody = body;
     const key = req.headers["idempotency-key"];
 
     if (typeof key === "string" && state.idempotency.has(key)) {
