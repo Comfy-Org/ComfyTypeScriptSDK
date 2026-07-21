@@ -79,6 +79,23 @@ await job.wait(); // poll to terminal (adaptive backoff); or call job.refresh() 
 console.log(job.status, job.outputs);
 ```
 
+## Partner (API) node auth
+
+Workflows that use partner/API nodes (Gemini, etc.) need a Comfy API key to
+authenticate them. Pass it per submit with `apiKey`. This is **not** the same as
+the credential you construct `Comfy` with: the constructor key authenticates
+_you_ to the server, while this one authenticates the partner nodes _inside_ the
+workflow (it is often the same `comfyui-…` key):
+
+```ts
+const job = await client.run(wf, { apiKey: "comfyui-…" });
+// or: await client.submit(wf, { apiKey: "comfyui-…" });
+```
+
+The SDK sends it once as `extra_data.api_key_comfy_org` alongside the workflow —
+one key authenticates every partner node in the graph. It is never logged or
+persisted by the SDK. Omit `apiKey` and no `extra_data` is sent at all.
+
 ## Assets and `core/ASSET`
 
 `client.assets.fromFile(path)` / `client.assets.fromBytes(data, options)`

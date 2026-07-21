@@ -362,6 +362,16 @@ paths:
                   type: object
                   description: API-format workflow graph, verbatim.
                   additionalProperties: true
+                extra_data:
+                  type: object
+                  description: "Optional typed extras submitted alongside the
+                    workflow. Closed: only the enumerated properties are
+                    accepted."
+                  additionalProperties: false
+                  properties:
+                    api_key_comfy_org:
+                      type: string
+                      description: API key for partner (API) nodes.
       responses:
         "201":
           description: Job created and queued.

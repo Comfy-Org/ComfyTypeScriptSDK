@@ -102,19 +102,29 @@ export class Comfy {
    * idempotent, pass an explicit `idempotencyKey` and reuse it. Note a reused
    * key is *rejected*, not replayed: on reuse, catch the error and poll/list
    * for the job the first attempt already created.
+   *
+   * Pass `apiKey` to authenticate partner (API) nodes in the workflow (for
+   * example Gemini) — it is sent once, as `extra_data.api_key_comfy_org`
+   * alongside the workflow, and is unrelated to the `Idempotency-Key`: it
+   * does not affect idempotency and is never persisted or logged by this
+   * SDK. Omit it and no `extra_data` is sent at all.
    */
   async submit(
     workflow: Workflow,
-    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
+    options: { idempotencyKey?: string; apiKey?: string; signal?: AbortSignal } = {},
   ): Promise<Job> {
     guardUiFormat(workflow);
     const graph = await this.materialize(workflow, options.signal);
     const key = options.idempotencyKey ?? newIdempotencyKey();
+    // A falsy apiKey (undefined or "") means "no key" — send no extra_data,
+    // matching the Python SDK's behavior so the two stay in lockstep.
+    const extraData = options.apiKey ? { api_key_comfy_org: options.apiKey } : undefined;
     const deadline = Date.now() + QUEUE_RETRY_BUDGET_MS;
     for (;;) {
       try {
         const job = await this.low.postJobs(graph, {
           idempotencyKey: key,
+          extraData,
           signal: options.signal,
         });
         return new Job(this.low, job);
@@ -133,9 +143,9 @@ export class Comfy {
   /** Submit, then poll to terminal (authoritative). Throws on failure. */
   async run(
     workflow: Workflow,
-    options: { timeoutMs?: number; signal?: AbortSignal } = {},
+    options: { timeoutMs?: number; apiKey?: string; signal?: AbortSignal } = {},
   ): Promise<Job> {
-    const job = await this.submit(workflow, { signal: options.signal });
+    const job = await this.submit(workflow, { apiKey: options.apiKey, signal: options.signal });
     return options.timeoutMs === undefined
       ? job.result(options.signal)
       : runWithTimeout(job, options.timeoutMs, options.signal);
