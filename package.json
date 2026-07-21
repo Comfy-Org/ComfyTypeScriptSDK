@@ -1,6 +1,6 @@
 {
   "name": "@comfyorg/sdk",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": false,
   "description": "TypeScript SDK for running ComfyUI workflows via the Comfy API v2 (self-hosted, Comfy Cloud, serverless).",
   "files": [
