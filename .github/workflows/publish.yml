@@ -11,15 +11,13 @@
 # `npm publish`) but never reaches `publish`, so it's safe to run against
 # any branch to sanity-check the pipeline before cutting a real release.
 #
-# Auth: today this mirrors Comfy-Org/ComfyUI_frontend's existing npm-publish
-# pattern (a granular automation token in `secrets.NPM_TOKEN`, gated behind a
-# GitHub Environment with required reviewers) rather than npm's newer
-# Trusted Publishing (OIDC, zero stored secrets) — see "Maintainer setup" /
-# the PR description for why, and for the token scope this needs and the
-# follow-up to move to OIDC once it's proven elsewhere in the org. The
-# `--provenance` flag + `id-token: write` below are added independent of
-# that: they work alongside token auth and give the published package a
-# public SLSA provenance attestation today, with zero extra setup.
+# Auth: npm Trusted Publishing (OIDC) — no NPM_TOKEN / API-token secret is
+# stored in this repo. A trusted publisher configured on npmjs.com (for this
+# repo + this workflow + the `npm` environment) lets `npm publish`
+# authenticate with a short-lived OIDC token, and generates a public SLSA
+# provenance attestation automatically. `id-token: write` on the publish job
+# is what enables it. OIDC trusted publishing requires a recent npm CLI
+# (>= 11.5.1), so the publish job upgrades npm before publishing.
 name: Publish to npm
 
 on:
@@ -133,7 +131,7 @@ jobs:
     # automatic. See "Maintainer setup" for the one-time steps.
     environment: npm
     permissions:
-      id-token: write # for npm's provenance (SLSA) attestation via OIDC/Sigstore
+      id-token: write # OIDC trusted publishing + provenance (no stored token)
       contents: read
     steps:
       - name: Download packed tarball
@@ -147,6 +145,10 @@ jobs:
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
+
+      # OIDC trusted publishing needs npm >= 11.5.1; Node 22 still ships 10.x.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
 
       - name: Check if this version is already on npm
         id: check_npm
@@ -173,8 +175,8 @@ jobs:
             exit "$STATUS"
           fi
 
+      # No NODE_AUTH_TOKEN: authentication is via npm Trusted Publishing (OIDC).
+      # `--provenance` is implied by trusted publishing but kept explicit.
       - name: Publish to npm
         if: steps.check_npm.outputs.exists == 'false'
         run: npm publish dist-pack/*.tgz --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
