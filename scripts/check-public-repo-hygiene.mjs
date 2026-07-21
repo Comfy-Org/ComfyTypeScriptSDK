@@ -142,9 +142,13 @@ function checkFile(rel) {
         }
         continue;
       }
-      if (!PUBLIC_COMFY_ORG_REPOS.has(name)) {
+      // Strip a trailing `.git` — repository URLs (package.json `repository.url`,
+      // git remotes) conventionally end in `.git`, and `Foo.git` is still a
+      // reference to the public repo `Foo`.
+      const repo = name.replace(/\.git$/, "");
+      if (!PUBLIC_COMFY_ORG_REPOS.has(repo)) {
         findings.push(
-          `${rel}:${lineno}: reference to Comfy-Org/${name}, which is not in the known-public ` +
+          `${rel}:${lineno}: reference to Comfy-Org/${repo}, which is not in the known-public ` +
             "allowlist (scripts/check-public-repo-hygiene.mjs) -- confirm it's public and add it, " +
             "or remove the reference",
         );

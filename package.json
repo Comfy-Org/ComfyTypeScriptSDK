@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": false,
   "description": "TypeScript SDK for running ComfyUI workflows via the Comfy API v2 (self-hosted, Comfy Cloud, serverless).",
+  "homepage": "https://github.com/Comfy-Org/ComfyTypeScriptSDK#readme",
+  "bugs": {
+    "url": "https://github.com/Comfy-Org/ComfyTypeScriptSDK/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Comfy-Org/ComfyTypeScriptSDK.git"
+  },
   "files": [
     "dist"
   ],
