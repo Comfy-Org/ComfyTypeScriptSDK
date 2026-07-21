@@ -226,10 +226,6 @@ export type PostAssetsResponses = {
      * New blob stored; asset minted.
      */
     201: Asset;
-    /**
-     * Accepted; the byte-path scan is still running. The asset is not usable yet — poll `GET /api/v2/assets/{id}` until ready.
-     */
-    202: Asset;
 };
 
 export type PostAssetsResponse = PostAssetsResponses[keyof PostAssetsResponses];
