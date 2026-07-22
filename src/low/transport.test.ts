@@ -70,6 +70,13 @@ describe("ComfyLow transport", () => {
     }
   });
 
+  it("postAssets sends content_type before the file part", async () => {
+    // The stub rejects 422 if `file` precedes `content_type` (mirrors public-api).
+    const asset = await low.postAssets(new Blob(["hello"]), "text/plain", "hi.txt");
+    expect(asset.id).toBe("asset_uploaded_01");
+    expect(server.state.uploadCount).toBe(1); // 201, not a field-order rejection
+  });
+
   it("postAssets surfaces hash_mismatch without a blind retry", async () => {
     server.state.rejectHashMismatch = true;
     await expect(

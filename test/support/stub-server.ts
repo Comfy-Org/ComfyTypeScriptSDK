@@ -385,6 +385,20 @@ export class StubServer {
       state.uploadDataEvents += 1;
     });
     state.lastUploadContentLength = Number(req.headers["content-length"] ?? body.length);
+    // Mirror public-api: the multipart is streamed, so `content_type` MUST
+    // arrive before the `file` part or the server rejects.
+    const parts = body.toString("latin1");
+    const ctIdx = parts.indexOf('name="content_type"');
+    const fileIdx = parts.indexOf('name="file"');
+    if (fileIdx !== -1 && (ctIdx === -1 || fileIdx < ctIdx)) {
+      sendError(
+        res,
+        422,
+        "invalid_body",
+        "content_type is required and must be sent before the file field",
+      );
+      return;
+    }
     if (state.rejectHashMismatch) {
       sendError(res, 409, "hash_mismatch", "bytes do not match expected_hash");
       return;

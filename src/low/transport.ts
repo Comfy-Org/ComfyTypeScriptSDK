@@ -178,8 +178,11 @@ export class ComfyLow {
       timeoutMs?: number | null;
     } = {},
   ): Promise<Asset> {
+    // public-api streams the multipart upload and requires the metadata fields
+    // BEFORE the file part (so it can route the file stream without buffering).
+    // The `file` part MUST be appended last, or the server rejects with 422
+    // "content_type is required and must be sent before the file field".
     const form = new FormData();
-    form.append("file", file, filePath);
     form.append("content_type", contentType);
     form.append("file_path", filePath);
     if (options.expectedHash !== undefined) {
@@ -188,6 +191,7 @@ export class ComfyLow {
     for (const tag of options.tags ?? []) {
       form.append("tags", tag);
     }
+    form.append("file", file, filePath);
     const headers: Record<string, string> = {};
     if (options.idempotencyKey) {
       headers["Idempotency-Key"] = options.idempotencyKey;
