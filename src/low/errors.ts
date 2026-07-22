@@ -90,6 +90,11 @@ const BY_CODE: Record<string, ApiErrorClass> = {
   queue_full: QueueFull,
   insufficient_credits: InsufficientCredits,
   not_found: NotFound,
+  // public-api currently returns entity-specific 404 codes even though the spec
+  // documents the generic `not_found`; map them so callers still get a typed
+  // NotFound. (Server/spec reconciliation is a separate follow-up.)
+  job_not_found: NotFound,
+  asset_not_found: NotFound,
   unauthorized: Unauthorized,
   forbidden: Forbidden,
 };
