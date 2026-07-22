@@ -27,6 +27,8 @@ describe("toSdkError", () => {
     ["idempotency_key_reuse", IdempotencyKeyReuse],
     ["insufficient_credits", InsufficientCredits],
     ["not_found", NotFound],
+    ["job_not_found", NotFound],
+    ["asset_not_found", NotFound],
     ["unauthorized", Unauthorized],
     ["forbidden", Forbidden],
   ];
