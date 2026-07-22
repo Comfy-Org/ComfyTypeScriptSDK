@@ -32,16 +32,54 @@ function parseData(raw: string): Record<string, unknown> {
 }
 
 /**
+ * Default read-idle timeout for the SSE byte stream. The server sends keepalive
+ * comments well within this window, so no *bytes at all* for this long means a
+ * silently-stalled ("zombie") connection — open but delivering nothing, not
+ * legitimately idle. We error the stream in that case so the caller's
+ * reconnect/poll fallback runs (see `Job.events`) instead of hanging forever.
+ * The timeout is at the byte level, not the parsed-message level, so keepalive
+ * comments (which `eventsource-parser` drops) still count as liveness.
+ */
+export const SSE_IDLE_TIMEOUT_MS = 45_000;
+
+/** A pass-through stream that errors if no chunk arrives within `ms`. */
+function idleTimeout(ms: number): TransformStream<Uint8Array, Uint8Array> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clear = () => {
+    if (timer !== undefined) clearTimeout(timer);
+  };
+  const arm = (controller: TransformStreamDefaultController<Uint8Array>) => {
+    clear();
+    timer = setTimeout(
+      () => controller.error(new Error(`SSE idle timeout: no data for ${ms}ms`)),
+      ms,
+    );
+  };
+  return new TransformStream<Uint8Array, Uint8Array>({
+    start: arm,
+    transform(chunk, controller) {
+      arm(controller);
+      controller.enqueue(chunk);
+    },
+    flush: clear,
+    cancel: clear,
+  });
+}
+
+/**
  * Decode a fetch response body into a stream of {@link RawEvent}s.
  *
  * No cursor/replay support by design — the contract carries no `id`/
  * `Last-Event-ID`; a blank `data:` frame (no payload) is dropped, matching
- * the Python decoder.
+ * the Python decoder. A read-idle timeout (default {@link SSE_IDLE_TIMEOUT_MS})
+ * errors a silently-stalled connection instead of blocking forever.
  */
 export async function* iterateSse(
   body: ReadableStream<Uint8Array>,
+  options: { idleTimeoutMs?: number } = {},
 ): AsyncGenerator<RawEvent, void, void> {
   const stream = body
+    .pipeThrough(idleTimeout(options.idleTimeoutMs ?? SSE_IDLE_TIMEOUT_MS))
     .pipeThrough(new TextDecoderStream())
     .pipeThrough(new EventSourceParserStream());
 

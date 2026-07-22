@@ -61,4 +61,26 @@ describe("iterateSse", () => {
     const events = await collect(streamOf('data: {"ok":true}\n\n'));
     expect(events).toEqual([{ event: "message", data: { ok: true } }]);
   });
+
+  it("errors on a silently-stalled ('zombie') stream instead of hanging", async () => {
+    const enc = new TextEncoder();
+    // Emit two frames, then hold the stream open and silent forever (no close,
+    // no keepalive) — the "zombie" a long-job SSE connection can become.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(enc.encode('event: status\ndata: {"status":"running"}\n\n'));
+        controller.enqueue(enc.encode('event: progress\ndata: {"value":0.3}\n\n'));
+      },
+    });
+    const got: RawEvent[] = [];
+    const t0 = Date.now();
+    await expect(
+      (async () => {
+        for await (const ev of iterateSse(body, { idleTimeoutMs: 100 })) got.push(ev);
+      })(),
+    ).rejects.toThrow(/idle timeout/i);
+    // Delivered the pre-stall frames, then errored quickly (didn't block).
+    expect(got.length).toBe(2);
+    expect(Date.now() - t0).toBeLessThan(3000);
+  });
 });
