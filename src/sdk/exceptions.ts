@@ -94,6 +94,11 @@ const BY_CODE: Record<string, ComfyErrorClass> = {
   idempotency_key_reuse: IdempotencyKeyReuse,
   insufficient_credits: InsufficientCredits,
   not_found: NotFound,
+  // public-api returns entity-specific 404 codes even though the spec documents
+  // the generic not_found; map them so a missing job/asset raises the typed
+  // NotFound. (Server/spec reconciliation of the code set is a separate follow-up.)
+  job_not_found: NotFound,
+  asset_not_found: NotFound,
   unauthorized: Unauthorized,
   forbidden: Forbidden,
 };
