@@ -26,6 +26,8 @@ describe("errorFromEnvelope", () => {
     ["queue_full", 429, QueueFull],
     ["insufficient_credits", 402, InsufficientCredits],
     ["not_found", 404, NotFound],
+    ["job_not_found", 404, NotFound],
+    ["asset_not_found", 404, NotFound],
     ["unauthorized", 401, Unauthorized],
     ["forbidden", 403, Forbidden],
   ];
