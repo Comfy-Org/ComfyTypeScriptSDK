@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -222,6 +223,14 @@ describe("ComfyLow transport", () => {
     for (const bad of ["evil\r\nX-Injected: 1", "line\nbreak", "carriage\rreturn"]) {
       expect(() => new ComfyLow(server.baseUrl, undefined, { clientInfo: bad })).toThrow();
     }
+  });
+
+  it("User-Agent version matches package.json (guards SDK_VERSION drift)", async () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    await low.getJob("job_01");
+    expect(server.state.lastUserAgentHeader).toContain(`comfy-sdk-typescript/${pkg.version}`);
   });
 
   // -- per-surface auth (FIX 3) ---------------------------------------------

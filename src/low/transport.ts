@@ -368,10 +368,14 @@ export class ComfyLow {
     const location = response.headers.get("Location");
     // Node/undici hands back the real 3xx status with a readable `Location`
     // for a manual redirect; status 0 covers a browser's opaque redirect.
+    // We only want the URL, not the bytes — release the response body so
+    // undici can reuse the connection instead of pinning it until GC.
     if (location && (response.status === 0 || (response.status >= 300 && response.status < 400))) {
+      await response.body?.cancel();
       return { url: location, expiresAt: parseExpiry(location) };
     }
     if (response.status === 200 || response.status === 206) {
+      await response.body?.cancel();
       return { url: this.urlFor(path), expiresAt: null };
     }
     return this.parseOrRaise<AssetContentUrl>(response, [200, 206]); // always throws here
