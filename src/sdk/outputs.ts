@@ -57,4 +57,18 @@ export class Output {
     const response = await this.low.getAssetContent(this.model.id, { range: options.range });
     return new Uint8Array(await response.arrayBuffer());
   }
+
+  /**
+   * A directly-fetchable URL for this output's bytes — a short-lived,
+   * self-authorizing bearer credential (readable until `expiresAt`) — so a
+   * caller (e.g. a serverless/Cloudflare Worker) can hand the URL to a
+   * downstream consumer instead of streaming the bytes through itself. On an
+   * object-storage backend (Cloud/serverless) this is a signed URL and
+   * `expiresAt` is set; on a self-hosted proxy (which serves the bytes
+   * inline) it's this asset's own content URL and `expiresAt` is `null`.
+   * Works on every backend and never throws.
+   */
+  async getDownloadUrl(): Promise<{ url: string; expiresAt: Date | null }> {
+    return this.low.getAssetContentUrl(this.model.id);
+  }
 }

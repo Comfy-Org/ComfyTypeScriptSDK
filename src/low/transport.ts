@@ -33,6 +33,12 @@ import { iterateSse, type RawEvent } from "./sse.js";
 const API_PREFIX = "/api/v2";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+// Mirrors `version` in package.json. Hand-kept in sync: this package builds
+// with plain `tsc` (no bundler/codegen step to inline it), and importing
+// `../../package.json` directly would step outside `tsc`'s configured
+// `rootDir`.
+const SDK_VERSION = "0.1.0";
+
 export interface RequestOptions {
   headers?: Record<string, string>;
   json?: unknown;
@@ -44,15 +50,76 @@ export interface RequestOptions {
    * must not time out while idle mid-job).
    */
   timeoutMs?: number | null;
+  /** Defaults to `"follow"`; `getAssetContentUrl` passes `"manual"` so it can
+   * read a redirect's `Location` instead of following it. */
+  redirect?: "follow" | "manual" | "error";
 }
 
 export interface ComfyLowOptions {
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Appended to the default `User-Agent` as `app/{clientInfo}` — lets an
+   * app built on this SDK attribute its own traffic in request logs.
+   * Opt-in; omitted by default.
+   */
+  clientInfo?: string;
+}
+
+/** Return shape of {@link ComfyLow.getAssetContentUrl}. */
+export interface AssetContentUrl {
+  url: string;
+  expiresAt: Date | null;
 }
 
 function looksLikePath(value: string): boolean {
   return value.startsWith("http") || value.startsWith("/");
+}
+
+function buildUserAgent(clientInfo?: string): string {
+  const base = `comfy-sdk-typescript/${SDK_VERSION} (node ${process.version})`;
+  if (!clientInfo) return base;
+  // A caller-set token goes verbatim into a header value; reject CR/LF so it
+  // can never split/inject headers (undici would reject it anyway, but fail
+  // fast with a clear message at construction).
+  if (/[\r\n]/.test(clientInfo)) {
+    throw new Error("clientInfo must not contain CR or LF characters");
+  }
+  return `${base} app/${clientInfo}`;
+}
+
+const GOOG_DATE_RE = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/;
+
+/**
+ * Expiry off a GCS V4 signed URL's `X-Goog-Date` (`YYYYMMDDTHHMMSSZ`, UTC) +
+ * `X-Goog-Expires` (seconds) query params. `null` if either is missing or
+ * doesn't match — an unrecognized signed-URL flavor degrades to "unknown
+ * expiry" rather than throwing.
+ */
+function parseExpiry(url: string): Date | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const dateParam = parsed.searchParams.get("X-Goog-Date");
+  const expiresParam = parsed.searchParams.get("X-Goog-Expires");
+  if (!dateParam || !expiresParam) return null;
+  const match = GOOG_DATE_RE.exec(dateParam);
+  if (!match) return null;
+  const expiresSeconds = Number.parseInt(expiresParam, 10);
+  if (Number.isNaN(expiresSeconds)) return null;
+  const [, year, month, day, hour, minute, second] = match;
+  const epochMs = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+  return new Date(epochMs + expiresSeconds * 1000);
 }
 
 function parseRetryAfter(response: Response): number | null {
@@ -68,12 +135,14 @@ export class ComfyLow {
   private readonly apiKey?: string;
   private readonly fetchImpl: typeof fetch;
   private readonly defaultTimeoutMs: number;
+  private readonly userAgent: string;
 
   constructor(baseUrl: string, apiKey?: string, options: ComfyLowOptions = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.apiKey = apiKey;
     this.fetchImpl = options.fetch ?? fetch;
     this.defaultTimeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.userAgent = buildUserAgent(options.clientInfo);
   }
 
   private urlFor(path: string): string {
@@ -114,6 +183,12 @@ export class ComfyLow {
         headers.set(key, value);
       }
     }
+    // Identifies this SDK's traffic in request logs (support + adoption
+    // metrics, no other data collected) — never overrides a caller-supplied
+    // header.
+    if (!headers.has("User-Agent")) {
+      headers.set("User-Agent", this.userAgent);
+    }
     return headers;
   }
 
@@ -141,7 +216,13 @@ export class ComfyLow {
       body = JSON.stringify(options.json);
     }
     const signal = this.resolveSignal(options.signal, options.timeoutMs);
-    return this.fetchImpl(url, { method, headers, body, signal, redirect: "follow" });
+    return this.fetchImpl(url, {
+      method,
+      headers,
+      body,
+      signal,
+      redirect: options.redirect ?? "follow",
+    });
   }
 
   private async parseOrRaise<T>(response: Response, ok: readonly number[]): Promise<T> {
@@ -259,6 +340,45 @@ export class ComfyLow {
       await this.parseOrRaise(response, [200, 206]);
     }
     return response;
+  }
+
+  /**
+   * `GET /api/v2/assets/{id}/content` with the redirect **not** followed —
+   * hands back a directly-fetchable URL instead of the bytes, so a caller
+   * (e.g. a serverless/Cloudflare Worker) can pass the URL to a downstream
+   * consumer without streaming the body through itself. On an object-storage
+   * backend (Cloud/serverless) the server redirects to a short-lived signed
+   * URL; that redirect is deliberately not followed (unlike
+   * {@link getAssetContent}), both so its `Location` can be read and so this
+   * client's bearer token is never attached to the object-storage host. On a
+   * self-hosted proxy (which serves the bytes inline, no redirect) this
+   * returns the endpoint's own absolute URL instead. Works on every backend
+   * and never throws for either shape — only a genuine failure maps to the
+   * usual typed error.
+   */
+  async getAssetContentUrl(
+    assetId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AssetContentUrl> {
+    const path = `/assets/${encodeURIComponent(assetId)}/content`;
+    const response = await this.request("GET", path, {
+      signal: options.signal,
+      redirect: "manual",
+    });
+    const location = response.headers.get("Location");
+    // Node/undici hands back the real 3xx status with a readable `Location`
+    // for a manual redirect; status 0 covers a browser's opaque redirect.
+    // We only want the URL, not the bytes — release the response body so
+    // undici can reuse the connection instead of pinning it until GC.
+    if (location && (response.status === 0 || (response.status >= 300 && response.status < 400))) {
+      await response.body?.cancel();
+      return { url: location, expiresAt: parseExpiry(location) };
+    }
+    if (response.status === 200 || response.status === 206) {
+      await response.body?.cancel();
+      return { url: this.urlFor(path), expiresAt: null };
+    }
+    return this.parseOrRaise<AssetContentUrl>(response, [200, 206]); // always throws here
   }
 
   // -- jobs -----------------------------------------------------------------

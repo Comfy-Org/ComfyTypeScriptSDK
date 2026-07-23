@@ -54,6 +54,9 @@ export interface ComfyOptions {
   apiKey?: string;
   timeoutMs?: number;
   fetch?: ComfyLowOptions["fetch"];
+  /** Appended to the SDK's default `User-Agent` as `app/{clientInfo}` — lets
+   * an app built on this SDK attribute its own traffic in request logs. */
+  clientInfo?: string;
 }
 
 function guardUiFormat(workflow: Workflow): void {
@@ -75,6 +78,7 @@ export class Comfy {
     this.low = new ComfyLow(baseUrl, options.apiKey, {
       timeoutMs: options.timeoutMs,
       fetch: options.fetch,
+      clientInfo: options.clientInfo,
     });
     this.assets = new AssetFactory(this.low);
     this.workflows = new WorkflowFactory();
