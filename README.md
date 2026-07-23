@@ -44,9 +44,9 @@ await job.getOutputs("13")[0].toFile("out.png");
 
 ## Auth, per surface
 
-| Surface                                                            | Auth                                       |
-| ------------------------------------------------------------------ | ------------------------------------------ |
-| Self-hosted proxy (`comfy-api-proxy` in front of your own ComfyUI) | none — do **not** pass `apiKey`            |
+| Surface                                                            | Auth                                            |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| Self-hosted proxy (`comfy-api-proxy` in front of your own ComfyUI) | none — do **not** pass `apiKey`                 |
 | Comfy Cloud                                                        | `new Comfy(baseUrl, { apiKey: "comfyui-..." })` |
 | Serverless                                                         | `new Comfy(baseUrl, { apiKey: "comfyui-..." })` |
 
