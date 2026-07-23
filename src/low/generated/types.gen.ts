@@ -412,7 +412,7 @@ export type PostJobsData = {
             [key: string]: unknown;
         };
         /**
-         * Optional typed extras submitted alongside the workflow. Closed: only the enumerated properties are accepted.
+         * Per-prompt ComfyUI `extra_data`, same shape as Comfy Cloud and local ComfyUI. Closed object: only the enumerated keys are accepted, keeping the contract fully typed. Forwarded to the worker per-prompt, never persisted, and excluded from idempotency comparison.
          */
         extra_data?: {
             /**
@@ -492,6 +492,10 @@ export type GetJobErrors = {
      * `not_found`.
      */
     404: ErrorEnvelope;
+    /**
+     * `rate_limited` — the caller has exceeded the request rate limit for this account. Account/rate-scoped, not job-specific — this can be returned even for a job id the caller doesn't own or that doesn't exist, without revealing which.
+     */
+    429: ErrorEnvelope;
     /**
      * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
      */
@@ -578,6 +582,10 @@ export type CancelJobErrors = {
      * `not_found`.
      */
     404: ErrorEnvelope;
+    /**
+     * `rate_limited` — the caller has exceeded the request rate limit for this account. Account/rate-scoped, not job-specific — this can be returned even for a job id the caller doesn't own or that doesn't exist, without revealing which.
+     */
+    429: ErrorEnvelope;
     /**
      * `upstream_error` — an unexpected failure reaching or processing the request in this implementation's backing services. The message is always a generic, safe-to-display string; implementation detail (the specific upstream, its error text, transport failures) is never included here — see each implementation's own error-mapping notes. Every operation in this contract can fail this way.
      */
