@@ -29,15 +29,10 @@
 import { errorFromEnvelope } from "./errors.js";
 import type { Asset, AssetFromHashData, Job, PostJobsData } from "./generated/types.gen.js";
 import { iterateSse, type RawEvent } from "./sse.js";
+import { SDK_VERSION } from "./version.js";
 
 const API_PREFIX = "/api/v2";
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-// Mirrors `version` in package.json. Hand-kept in sync: this package builds
-// with plain `tsc` (no bundler/codegen step to inline it), and importing
-// `../../package.json` directly would step outside `tsc`'s configured
-// `rootDir`.
-const SDK_VERSION = "0.1.0";
 
 export interface RequestOptions {
   headers?: Record<string, string>;

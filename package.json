@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/gen-version.mjs && tsc",
     "generate": "openapi-ts",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
