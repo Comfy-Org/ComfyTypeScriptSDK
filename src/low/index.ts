@@ -25,4 +25,5 @@ export {
   OPERATION_METHODS,
   type ComfyLowOptions,
   type RequestOptions,
+  type AssetContentUrl,
 } from "./transport.js";

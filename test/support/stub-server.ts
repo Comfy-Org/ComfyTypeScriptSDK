@@ -57,6 +57,14 @@ export interface ServerState {
    */
   contentRedirectOrigin: string | null;
   /**
+   * When set, `GET /assets/{id}/content` redirects to this exact URL
+   * (verbatim, including any query string) instead of appending `path` to
+   * `contentRedirectOrigin` — lets a test simulate a GCS-style signed URL
+   * complete with `X-Goog-Date`/`X-Goog-Expires` query params. Takes
+   * precedence over `contentRedirectOrigin` when both are set.
+   */
+  contentRedirectLocation: string | null;
+  /**
    * Overrides the `hash` field returned by `GET /assets/{id}`. `undefined`
    * (the default) uses `serverHash` as before; an explicit `null` simulates
    * a server model with no hash on record.
@@ -88,6 +96,9 @@ export interface ServerState {
    * `null` if that request carried none — lets a test prove a bearer token
    * was (or was not) attached/received. */
   lastAuthorizationHeader: string | null;
+  /** The raw `User-Agent` header value of the most recent request, or
+   * `null` if that request carried none. */
+  lastUserAgentHeader: string | null;
 }
 
 function defaultState(): ServerState {
@@ -107,6 +118,7 @@ function defaultState(): ServerState {
     firstReconnectProgress: 0.4,
     progressValue: 0.5,
     contentRedirectOrigin: null,
+    contentRedirectLocation: null,
     getAssetHashOverride: undefined,
     hangJobPoll: false,
     uploadCount: 0,
@@ -121,6 +133,7 @@ function defaultState(): ServerState {
     lastUploadContentLength: null,
     idempotency: new Map(),
     lastAuthorizationHeader: null,
+    lastUserAgentHeader: null,
   };
 }
 
@@ -244,6 +257,7 @@ export class StubServer {
     const path = url.pathname;
     const state = this.state;
     state.lastAuthorizationHeader = (req.headers.authorization as string | undefined) ?? null;
+    state.lastUserAgentHeader = (req.headers["user-agent"] as string | undefined) ?? null;
 
     if (!this.authOk(req)) {
       await readBody(req);
@@ -318,6 +332,11 @@ export class StubServer {
   }
 
   private serveContent(req: IncomingMessage, res: ServerResponse, path: string): void {
+    if (this.state.contentRedirectLocation) {
+      res.writeHead(302, { Location: this.state.contentRedirectLocation });
+      res.end();
+      return;
+    }
     if (this.state.contentRedirectOrigin) {
       res.writeHead(302, { Location: `${this.state.contentRedirectOrigin}${path}` });
       res.end();

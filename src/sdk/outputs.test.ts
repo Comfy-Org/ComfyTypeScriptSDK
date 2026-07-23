@@ -22,7 +22,7 @@ describe("Output", () => {
     await server.stop();
   });
 
-  function output(): Output {
+  function outputWithId(id: string): Output {
     return new Output(
       {
         node_id: "13",
@@ -30,13 +30,17 @@ describe("Output", () => {
         type: "image",
         content_type: "image/png",
         size_bytes: 10,
-        id: "asset_out_01",
+        id,
         hash: null,
         url: "http://example.invalid/out",
         url_expires_at: "2026-07-10T19:20:00Z",
       },
       low,
     );
+  }
+
+  function output(): Output {
+    return outputWithId("asset_out_01");
   }
 
   it("exposes the low-level output fields", () => {
@@ -73,5 +77,35 @@ describe("Output", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  // -- getDownloadUrl -----------------------------------------------------
+
+  it("getDownloadUrl returns this output's content URL with a null expiresAt on a self-hosted backend", async () => {
+    server.state.contentBytes = Buffer.from("bytes");
+    const result = await output().getDownloadUrl();
+    expect(result.url).toBe(`${server.baseUrl}/api/v2/assets/asset_out_01/content`);
+    expect(result.expiresAt).toBeNull();
+  });
+
+  it("getDownloadUrl surfaces the signed URL + expiresAt when the backend redirects (Cloud/serverless)", async () => {
+    const signedUrl =
+      "https://storage.googleapis.com/bucket/o?X-Goog-Date=20260722T000000Z&X-Goog-Expires=60";
+    server.state.contentRedirectLocation = signedUrl;
+    const result = await output().getDownloadUrl();
+    expect(result.url).toBe(signedUrl);
+    expect(result.expiresAt).toEqual(new Date("2026-07-22T00:01:00.000Z"));
+  });
+
+  it("getDownloadUrl resolves each output of a multi-output job to its own distinct URL", async () => {
+    server.state.contentBytes = Buffer.from("bytes");
+    const outA = outputWithId("asset_out_a");
+    const outB = outputWithId("asset_out_b");
+    const [a, b] = await Promise.all([outA.getDownloadUrl(), outB.getDownloadUrl()]);
+    expect(a.url).not.toBe(b.url);
+    expect(a.url).toBe(`${server.baseUrl}/api/v2/assets/asset_out_a/content`);
+    expect(b.url).toBe(`${server.baseUrl}/api/v2/assets/asset_out_b/content`);
+    expect(a.expiresAt).toBeNull();
+    expect(b.expiresAt).toBeNull();
   });
 });

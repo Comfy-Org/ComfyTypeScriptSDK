@@ -56,6 +56,11 @@ different host (for example a job's `events`/`cancel` link, or a redirect on
 an asset download), the key is not sent there — see "Typed errors" below for
 the exception classes this surface can raise.
 
+The SDK identifies itself via `User-Agent` (for support + usage analytics);
+no other data is collected. Pass `clientInfo` to `new Comfy(baseUrl, { ... })`
+to append your own app's name to it, for example when attributing traffic
+from a Worker built on top of this SDK.
+
 ## Quickstart
 
 ```ts

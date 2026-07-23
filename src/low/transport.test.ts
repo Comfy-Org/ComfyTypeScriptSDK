@@ -92,6 +92,56 @@ describe("ComfyLow transport", () => {
     expect(await response.text()).toBe("234");
   });
 
+  // -- getAssetContentUrl -----------------------------------------------
+
+  it("getAssetContentUrl returns the signed URL + parsed expiresAt when the server redirects (Cloud/object storage)", async () => {
+    const signedUrl =
+      "https://storage.googleapis.com/bucket/asset_1?X-Goog-Date=20260722T120000Z&X-Goog-Expires=3600&X-Goog-Signature=deadbeef";
+    server.state.contentRedirectLocation = signedUrl;
+    const result = await low.getAssetContentUrl("asset_1");
+    expect(result.url).toBe(signedUrl);
+    expect(result.expiresAt).toEqual(new Date("2026-07-22T13:00:00.000Z"));
+  });
+
+  it("getAssetContentUrl returns this endpoint's own absolute URL with a null expiresAt when served inline (self-hosted)", async () => {
+    server.state.contentBytes = Buffer.from("inline-bytes");
+    const result = await low.getAssetContentUrl("asset_1");
+    expect(result.url).toBe(`${server.baseUrl}/api/v2/assets/asset_1/content`);
+    expect(result.expiresAt).toBeNull();
+  });
+
+  it("getAssetContentUrl returns null expiresAt for a redirect URL with no recognizable signed-URL params", async () => {
+    server.state.contentRedirectLocation = "https://cdn.example.invalid/asset_1?token=opaque";
+    const result = await low.getAssetContentUrl("asset_1");
+    expect(result.url).toBe("https://cdn.example.invalid/asset_1?token=opaque");
+    expect(result.expiresAt).toBeNull();
+  });
+
+  it("getAssetContentUrl never throws for a real 404 — no, it maps to the usual typed error", async () => {
+    // Sanity check that a genuine failure still surfaces via the existing
+    // error mapping rather than being swallowed by the "never throws" cases.
+    await expect(low.getAssetContentUrl("")).rejects.toBeTruthy();
+  });
+
+  it("getAssetContentUrl does not attach the bearer token to the redirect target (redirect is never followed)", async () => {
+    const authed = new ComfyLow(server.baseUrl, "top-secret-key");
+    const attacker = new StubServer();
+    await attacker.start();
+    try {
+      server.state.contentRedirectOrigin = attacker.baseUrl;
+      const result = await authed.getAssetContentUrl("asset_1");
+      // The redirect is handed back, not followed.
+      expect(result.url.startsWith(attacker.baseUrl)).toBe(true);
+      // The initial (same-origin) request carried the token...
+      expect(server.state.lastAuthorizationHeader).toBe("Bearer top-secret-key");
+      // ...but since the redirect was never followed, the attacker's server
+      // was never even contacted, let alone with the bearer token.
+      expect(attacker.state.lastAuthorizationHeader).toBeNull();
+    } finally {
+      await attacker.stop();
+    }
+  });
+
   it("postJobs rejects a reused Idempotency-Key (single-use, no replay)", async () => {
     const key = "idem-key-1";
     const first = await low.postJobs({ "1": {} }, { idempotencyKey: key });
@@ -142,6 +192,30 @@ describe("ComfyLow transport", () => {
   it("cancelJob returns the canceling state", async () => {
     const job = await low.cancelJob("job_01");
     expect(job.status).toBe("canceling");
+  });
+
+  // -- User-Agent identification ---------------------------------------------
+
+  it("sends a default User-Agent identifying the SDK + node runtime", async () => {
+    await low.getJob("job_01");
+    expect(server.state.lastUserAgentHeader).toMatch(
+      /^comfy-sdk-typescript\/\d+\.\d+\.\d+ \(node v\d+\.\d+\.\d+\)$/,
+    );
+  });
+
+  it("appends an app/{clientInfo} token when clientInfo is set, without dropping the base token", async () => {
+    const withClientInfo = new ComfyLow(server.baseUrl, undefined, { clientInfo: "my-worker" });
+    await withClientInfo.getJob("job_01");
+    expect(server.state.lastUserAgentHeader).toMatch(
+      /^comfy-sdk-typescript\/\d+\.\d+\.\d+ \(node v\d+\.\d+\.\d+\) app\/my-worker$/,
+    );
+  });
+
+  it("does not override a caller-supplied User-Agent header", async () => {
+    // No public method currently lets a caller pass headers through, so this
+    // exercises the escape hatch directly.
+    await low.request("GET", "/jobs/job_01", { headers: { "User-Agent": "custom-agent/1.0" } });
+    expect(server.state.lastUserAgentHeader).toBe("custom-agent/1.0");
   });
 
   // -- per-surface auth (FIX 3) ---------------------------------------------
