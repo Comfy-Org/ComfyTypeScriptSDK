@@ -44,11 +44,11 @@ await job.getOutputs("13")[0].toFile("out.png");
 
 ## Auth, per surface
 
-| Surface                                                            | Auth                                       |
-| ------------------------------------------------------------------ | ------------------------------------------ |
-| Self-hosted proxy (`comfy-api-proxy` in front of your own ComfyUI) | none — do **not** pass `apiKey`            |
-| Comfy Cloud                                                        | `new Comfy(baseUrl, { apiKey: "ck_..." })` |
-| Serverless                                                         | `new Comfy(baseUrl, { apiKey: "ck_..." })` |
+| Surface                                                            | Auth                                            |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| Self-hosted proxy (`comfy-api-proxy` in front of your own ComfyUI) | none — do **not** pass `apiKey`                 |
+| Comfy Cloud                                                        | `new Comfy(baseUrl, { apiKey: "comfyui-..." })` |
+| Serverless                                                         | `new Comfy(baseUrl, { apiKey: "comfyui-..." })` |
 
 The client only attaches the `Authorization` header to requests aimed at its
 own `baseUrl`'s origin. If the server hands back an absolute URL on a
@@ -177,6 +177,32 @@ managing an `AbortController` yourself:
 ```ts
 await client.run(wf, { timeoutMs: 60_000 });
 ```
+
+## Downloading outputs
+
+A finished job exposes its results as output handles — `job.outputs`, or
+`job.getOutputs(nodeId)` to filter to one node. Each is an asset you can pull
+down whichever way suits the caller:
+
+```ts
+const out = job.getOutputs("13")[0];
+await out.toFile("result.png"); // stream to disk
+const data = await out.toBytes(); // buffer into memory
+await out.toFile("head.png", { range: [0, 1023] }); // range-aware: first 1 KiB only
+```
+
+`getDownloadUrl()` hands back a fetchable URL instead of streaming the bytes
+through your process — give it to a browser, a CDN, or another service:
+
+```ts
+const { url, expiresAt } = await out.getDownloadUrl();
+```
+
+On Comfy Cloud / serverless it's a short-lived, **self-authorizing** signed
+storage URL: whoever holds it can read the asset until `expiresAt` with no API
+key of their own. On a self-hosted proxy it's the content endpoint (normal auth
+still applies) and `expiresAt` is `null`. It works on every backend and never
+downloads the bytes first.
 
 ## Typed errors
 
