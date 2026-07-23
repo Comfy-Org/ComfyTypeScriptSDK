@@ -1,0 +1,76 @@
+name: Sync spec auto-heal
+
+# The automated spec-sync PRs (branch `chore/sync-v2-spec-*`) update
+# spec/openapi.yaml but not the generated low layer, so the spec-drift check in
+# ci.yml fails until someone runs `pnpm generate` by hand. This workflow does
+# that automatically: on those branches it regenerates the low layer and, if the
+# generated client changed, commits and pushes it back onto the PR branch.
+#
+# The push uses SPEC_SYNC_TOKEN (a token with contents:write) rather than the
+# default GITHUB_TOKEN: a GITHUB_TOKEN push does not re-trigger CI (GitHub's
+# recursive-run guard), so the required checks would stay red on the new head
+# commit. With SPEC_SYNC_TOKEN the follow-up CI run fires and goes green. When
+# regeneration produces no changes the step pushes nothing, so this cannot loop.
+#
+# Only runs on the sync branches; an ordinary PR is never touched.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+concurrency:
+  group: sync-autoheal-${{ github.head_ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  autoheal:
+    if: startsWith(github.head_ref, 'chore/sync-v2-spec-')
+    runs-on: ubuntu-latest
+    env:
+      SPEC_SYNC_TOKEN: ${{ secrets.SPEC_SYNC_TOKEN }}
+    steps:
+      - name: Require a push-capable token
+        if: env.SPEC_SYNC_TOKEN == ''
+        run: |
+          echo "::error::SPEC_SYNC_TOKEN is not set — cannot push the regenerated" \
+               "client, so the spec-drift check would stay red. Add a token with" \
+               "contents:write on this repo as the SPEC_SYNC_TOKEN secret." >&2
+          exit 1
+
+      - name: Check out the PR branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          token: ${{ env.SPEC_SYNC_TOKEN }}
+          ref: ${{ github.head_ref }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate the low layer from the vendored spec
+        run: pnpm generate
+
+      - name: Commit and push the regenerated client if it changed
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Generated client already in sync — nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: regenerate low layer for synced v2 spec"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
