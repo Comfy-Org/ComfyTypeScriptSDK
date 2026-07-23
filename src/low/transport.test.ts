@@ -218,6 +218,12 @@ describe("ComfyLow transport", () => {
     expect(server.state.lastUserAgentHeader).toBe("custom-agent/1.0");
   });
 
+  it("rejects a clientInfo containing CR/LF (no header injection)", () => {
+    for (const bad of ["evil\r\nX-Injected: 1", "line\nbreak", "carriage\rreturn"]) {
+      expect(() => new ComfyLow(server.baseUrl, undefined, { clientInfo: bad })).toThrow();
+    }
+  });
+
   // -- per-surface auth (FIX 3) ---------------------------------------------
 
   it("a request with no apiKey against a no-auth server sends no Authorization header", async () => {

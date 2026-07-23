@@ -78,7 +78,14 @@ function looksLikePath(value: string): boolean {
 
 function buildUserAgent(clientInfo?: string): string {
   const base = `comfy-sdk-typescript/${SDK_VERSION} (node ${process.version})`;
-  return clientInfo ? `${base} app/${clientInfo}` : base;
+  if (!clientInfo) return base;
+  // A caller-set token goes verbatim into a header value; reject CR/LF so it
+  // can never split/inject headers (undici would reject it anyway, but fail
+  // fast with a clear message at construction).
+  if (/[\r\n]/.test(clientInfo)) {
+    throw new Error("clientInfo must not contain CR or LF characters");
+  }
+  return `${base} app/${clientInfo}`;
 }
 
 const GOOG_DATE_RE = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/;
