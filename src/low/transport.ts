@@ -142,7 +142,16 @@ export class ComfyLow {
 
   private urlFor(path: string): string {
     if (path.startsWith("http")) return path;
-    if (path.startsWith("/api/")) return this.baseUrl + path;
+    // A server link (job.urls.*, marked by containing /api/) already carries
+    // the server's mount prefix, so it resolves against the origin — joining
+    // it to baseUrl would double the prefix on a prefix-mounted surface.
+    if (path.startsWith("/") && path.includes("/api/")) {
+      try {
+        return new URL(this.baseUrl).origin + path;
+      } catch {
+        return this.baseUrl + path;
+      }
+    }
     return this.baseUrl + API_PREFIX + path;
   }
 
