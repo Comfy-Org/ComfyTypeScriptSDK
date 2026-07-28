@@ -5,7 +5,7 @@
  * sync/async duplication (JS is async-native).
  */
 
-export { Comfy, type ComfyOptions } from "./client.js";
+export { Comfy, COMFY_CLOUD_BASE_URL, type ComfyOptions } from "./client.js";
 export { Asset, AssetFactory } from "./assets.js";
 export { Workflow, WorkflowFactory, type WorkflowGraph } from "./workflows.js";
 export { Job, JobFactory } from "./jobs.js";

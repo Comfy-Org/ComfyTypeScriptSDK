@@ -18,7 +18,7 @@
  * import { Comfy } from "@comfyorg/sdk";
  *
  * const client = new Comfy("http://127.0.0.1:8189"); // self-hosted, no key
- * // const client = new Comfy("https://api.comfy.org", { apiKey: "ck_..." });
+ * // const client = new Comfy({ apiKey: "ck_..." });   // Comfy Cloud (default base URL)
  *
  * const wf = await client.workflows.fromFile("workflow_api.json");
  * const asset = client.assets.fromFile("photo.png"); // lazy; uploaded on use
@@ -48,6 +48,10 @@ import { WorkflowFactory } from "./workflows.js";
 
 // How long to keep retrying a full queue before giving up (ms).
 const QUEUE_RETRY_BUDGET_MS = 60_000;
+/** Base URL of the hosted Comfy Cloud deployment, used when none is given.
+ * Self-hosted ComfyUI and serverless deployments must pass their own baseUrl. */
+export const COMFY_CLOUD_BASE_URL = "https://cloud.comfy.org";
+
 const DEFAULT_RETRY_AFTER_S = 2;
 
 export interface ComfyOptions {
@@ -74,7 +78,14 @@ export class Comfy {
   readonly workflows: WorkflowFactory;
   readonly jobs: JobFactory;
 
-  constructor(baseUrl: string, options: ComfyOptions = {}) {
+  /** Connect to the hosted Comfy Cloud deployment. */
+  constructor(options?: ComfyOptions);
+  /** Connect to a specific deployment — self-hosted ComfyUI, or a serverless one. */
+  constructor(baseUrl: string, options?: ComfyOptions);
+  constructor(baseUrlOrOptions?: string | ComfyOptions, maybeOptions: ComfyOptions = {}) {
+    const isUrl = typeof baseUrlOrOptions === "string";
+    const baseUrl = isUrl ? baseUrlOrOptions : COMFY_CLOUD_BASE_URL;
+    const options = isUrl ? maybeOptions : (baseUrlOrOptions ?? {});
     this.low = new ComfyLow(baseUrl, options.apiKey, {
       timeoutMs: options.timeoutMs,
       fetch: options.fetch,

@@ -66,9 +66,9 @@ describe("follow-up link resolution", () => {
   });
 
   it("leaves bare-surface self links unchanged", async () => {
-    const { low, requests } = capturingLow("https://api.comfy.org", "comfyui-k");
+    const { low, requests } = capturingLow("https://cloud.comfy.org", "comfyui-k");
     await low.getJob("/api/v2/jobs/j1");
-    expect(requests[0].url).toBe("https://api.comfy.org/api/v2/jobs/j1");
+    expect(requests[0].url).toBe("https://cloud.comfy.org/api/v2/jobs/j1");
   });
 
   it("still attaches auth to origin-resolved links", async () => {
