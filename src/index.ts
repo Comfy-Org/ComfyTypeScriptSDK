@@ -14,7 +14,7 @@
  * import { Comfy } from "@comfyorg/sdk";
  *
  * const client = new Comfy("http://127.0.0.1:8189"); // local proxy
- * // const client = new Comfy("https://api.comfy.org", { apiKey: "..." }) // Comfy Cloud
+ * // const client = new Comfy("https://cloud.comfy.org", { apiKey: "..." }) // Comfy Cloud
  *
  * const wf = await client.workflows.fromFile("workflow_api.json");
  * const asset = client.assets.fromFile("photo.png"); // lazy; uploaded on use
