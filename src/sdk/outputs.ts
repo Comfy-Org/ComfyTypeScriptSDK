@@ -13,6 +13,14 @@ import { pipeline } from "node:stream/promises";
 
 import type { ComfyLow, Output as LowOutput } from "../low/index.js";
 
+/**
+ * One file produced by one node of a finished job.
+ *
+ * Obtained from {@link Job.outputs} or {@link Job.getOutputs}, never
+ * constructed directly. The bytes are fetched on demand — nothing is
+ * downloaded until you call {@link Output.toFile}, {@link Output.toBytes},
+ * or hand {@link Output.getDownloadUrl} to someone else.
+ */
 export class Output {
   private readonly model: LowOutput;
   private readonly low: ComfyLow;
@@ -22,30 +30,44 @@ export class Output {
     this.low = low;
   }
 
+  /** The graph node that produced this output. */
   get nodeId(): string {
     return this.model.node_id;
   }
 
+  /** Server-assigned filename, e.g. `ComfyUI_00001_.png`. */
   get name(): string {
     return this.model.name;
   }
 
+  /** Output kind — `image`, `video`, `audio`, `text`, … */
   get type(): LowOutput["type"] {
     return this.model.type;
   }
 
+  /** This output's asset UUID; also accepted by `client.assets.get()`. */
   get id(): string {
     return this.model.id;
   }
 
+  /** Full size of the output, independent of any `range` you request. */
   get sizeBytes(): number {
     return this.model.size_bytes;
   }
 
+  /** MIME type reported by the server, e.g. `image/png`. */
   get contentType(): string {
     return this.model.content_type;
   }
 
+  /**
+   * Stream this output to `path` and resolve to that same path.
+   *
+   * Bytes are piped straight to disk, so an output larger than memory is
+   * fine. `range: [first, last]` fetches only that slice and is **inclusive
+   * of both ends** (HTTP `Range: bytes=first-last`), so `[0, 4]` yields the
+   * first five bytes.
+   */
   async toFile(path: string, options: { range?: readonly [number, number] } = {}): Promise<string> {
     const response = await this.low.getAssetContent(this.model.id, { range: options.range });
     if (!response.body) throw new Error(`empty response body for asset ${this.model.id}`);
@@ -53,6 +75,13 @@ export class Output {
     return path;
   }
 
+  /**
+   * Resolve to this output's bytes in memory.
+   *
+   * Convenient for small outputs; prefer {@link Output.toFile} for large
+   * ones, since this buffers the whole body. `range` is inclusive — see
+   * {@link Output.toFile}.
+   */
   async toBytes(options: { range?: readonly [number, number] } = {}): Promise<Uint8Array> {
     const response = await this.low.getAssetContent(this.model.id, { range: options.range });
     return new Uint8Array(await response.arrayBuffer());

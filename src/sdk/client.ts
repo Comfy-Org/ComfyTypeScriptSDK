@@ -72,6 +72,15 @@ function guardUiFormat(workflow: Workflow): void {
   }
 }
 
+/**
+ * The SDK entry point — one client per Comfy deployment.
+ *
+ * Holds the three factories you build work from ({@link Comfy.assets},
+ * {@link Comfy.workflows}, {@link Comfy.jobs}) and submits graphs via
+ * {@link Comfy.run} (submit, then poll to terminal) or {@link Comfy.submit}
+ * (submit and return immediately). Defaults to Comfy Cloud; pass a base URL
+ * to target a self-hosted or serverless deployment.
+ */
 export class Comfy {
   private readonly low: ComfyLow;
   readonly assets: AssetFactory;

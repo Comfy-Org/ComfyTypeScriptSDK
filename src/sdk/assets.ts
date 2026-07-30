@@ -90,6 +90,15 @@ function bytesSource(data: Uint8Array, filename?: string, contentType?: string):
   };
 }
 
+/**
+ * A lazy handle to one input file.
+ *
+ * Nothing happens on construction: the bytes are hashed locally with blake3,
+ * deduped against the server, and uploaded only on first use — either when
+ * you {@link Asset.commit} explicitly, or when a workflow referencing it is
+ * submitted. Assign one to a node input via `workflow.setInput(...)` and it
+ * is substituted as a `core/ASSET` reference.
+ */
 export class Asset {
   readonly [ASSET_HANDLE] = true as const;
 
@@ -105,14 +114,17 @@ export class Asset {
     this.source = source;
   }
 
+  /** The asset UUID, or `undefined` while this handle is still uncommitted. */
   get id(): string | undefined {
     return this.idValue;
   }
 
+  /** The `file_path` sent to the server — the original filename for a file source, a synthesized one for bytes. */
   get filePath(): string {
     return this.source.filePath;
   }
 
+  /** After commit: `true` if these bytes were uploaded, `false` if the server deduped against an existing copy. `null` before commit. */
   get createdNew(): boolean | null {
     return this.createdNewValue;
   }
@@ -168,10 +180,19 @@ export class AssetFactory {
     this.low = low;
   }
 
+  /**
+   * A lazy handle to a file on disk — the cheapest source, and the only one
+   * that stays lazy end to end: nothing is read, hashed, or uploaded until
+   * the asset is actually used.
+   */
   fromFile(path: string): Asset {
     return new Asset(this.low, fileSource(path));
   }
 
+  /**
+   * A handle to bytes already in memory. Supply `filename`/`contentType` when
+   * the server should see something more specific than the defaults.
+   */
   fromBytes(data: Uint8Array, options: { filename?: string; contentType?: string } = {}): Asset {
     return new Asset(this.low, bytesSource(data, options.filename, options.contentType));
   }
