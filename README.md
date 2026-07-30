@@ -287,11 +287,11 @@ changes; CI fails if the generated code has drifted from the spec.
 
 Clients for the same Comfy API v2 contract:
 
-| Project | Language | Package |
-|---|---|---|
-| [comfy-python-sdk](https://github.com/Comfy-Org/comfy-python-sdk) | Python | `comfy-sdk` |
+| Project                                                                   | Language   | Package         |
+| ------------------------------------------------------------------------- | ---------- | --------------- |
+| [comfy-python-sdk](https://github.com/Comfy-Org/comfy-python-sdk)         | Python     | `comfy-sdk`     |
 | [comfy-typescript-sdk](https://github.com/Comfy-Org/comfy-typescript-sdk) | TypeScript | `@comfyorg/sdk` |
-| [comfy-swift-sdk](https://github.com/Comfy-Org/comfy-swift-sdk) | Swift | SwiftPM |
+| [comfy-swift-sdk](https://github.com/Comfy-Org/comfy-swift-sdk)           | Swift      | SwiftPM         |
 
 [comfy-api-proxy](https://github.com/Comfy-Org/comfy-api-proxy) fronts a
 self-hosted ComfyUI with this same v2 contract (it is the `comfy-api-proxy`
