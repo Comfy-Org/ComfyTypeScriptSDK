@@ -15,7 +15,7 @@
   "bugs": {
     "url": "https://github.com/Comfy-Org/ComfyTypeScriptSDK/issues"
   },
-  "author": "Comfy Org",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Comfy-Org/ComfyTypeScriptSDK.git"
