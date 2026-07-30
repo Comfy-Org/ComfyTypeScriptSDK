@@ -7,7 +7,7 @@
  * optional key. This is the `sdk` (idiomatic) layer; the generated
  * types/validators + thin transport live under `@comfyorg/sdk/low` for
  * advanced/escape-hatch use. Behaviorally mirrors the Python SDK
- * (`Comfy-Org/ComfyPythonSDK`), collapsed to one async client (JS is
+ * (`Comfy-Org/comfy-python-sdk`), collapsed to one async client (JS is
  * async-native — no sync/async split).
  *
  * ```ts
