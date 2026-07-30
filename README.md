@@ -1,11 +1,31 @@
-# @comfyorg/sdk (TypeScript)
+<div align="center">
+
+<img src="assets/logo.svg" alt="Comfy" width="130"/>
+
+<h1>comfy-typescript-sdk</h1>
+
+<p>
+  <strong>The TypeScript client for the <a href="https://docs.comfy.org">Comfy API v2</a>.</strong><br/>
+  Submit a workflow, stream its progress, get your outputs — against self-hosted ComfyUI, Comfy Cloud, or serverless.
+</p>
+
+</div>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@comfyorg/sdk"><img src="https://img.shields.io/npm/v/@comfyorg/sdk?style=for-the-badge&logo=npm&logoColor=white&label=npm" alt="npm"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/Node-%3E%3D22-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node >=22"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="https://cloud.comfy.org"><img src="https://img.shields.io/badge/Comfy_Cloud-cloud.comfy.org-211927?style=for-the-badge" alt="Comfy Cloud"></a>
+</p>
+
+---
 
 TypeScript SDK for running ComfyUI workflows via the **Comfy API v2**. The
 same code runs against three surfaces — a self-hosted ComfyUI (through
 [`comfy-api-proxy`](https://github.com/Comfy-Org/comfy-api-proxy)), Comfy
 Cloud, or a serverless deployment — changing only the base URL and an
 optional API key. It mirrors the behavior of the
-[Python SDK](https://github.com/Comfy-Org/ComfyPythonSDK) (`comfy-sdk`):
+[Python SDK](https://github.com/Comfy-Org/comfy-python-sdk) (`comfy-sdk`):
 upload/dedup inputs, submit a workflow, wait for it, download the outputs —
 collapsed here to a single async client (no separate sync/async API;
 JavaScript is async-native).
@@ -262,6 +282,20 @@ The generated part of `low` (`src/low/generated/*`) is produced by
 vendored, filtered copy of the canonical Comfy API v2 contract (see
 `spec/README.md`). Regenerate it with `pnpm generate` after the spec
 changes; CI fails if the generated code has drifted from the spec.
+
+## Related projects
+
+Clients for the same Comfy API v2 contract:
+
+| Project                                                                   | Language   | Package         |
+| ------------------------------------------------------------------------- | ---------- | --------------- |
+| [comfy-python-sdk](https://github.com/Comfy-Org/comfy-python-sdk)         | Python     | `comfy-sdk`     |
+| [comfy-typescript-sdk](https://github.com/Comfy-Org/comfy-typescript-sdk) | TypeScript | `@comfyorg/sdk` |
+| [comfy-swift-sdk](https://github.com/Comfy-Org/comfy-swift-sdk)           | Swift      | SwiftPM         |
+
+[comfy-api-proxy](https://github.com/Comfy-Org/comfy-api-proxy) fronts a
+self-hosted ComfyUI with this same v2 contract (it is the `comfy-api-proxy`
+entry in the `servers` list of `spec/openapi.yaml`).
 
 ## Development
 

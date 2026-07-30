@@ -11,14 +11,14 @@
     "sdk",
     "workflow"
   ],
-  "homepage": "https://github.com/Comfy-Org/ComfyTypeScriptSDK#readme",
+  "homepage": "https://github.com/Comfy-Org/comfy-typescript-sdk#readme",
   "bugs": {
-    "url": "https://github.com/Comfy-Org/ComfyTypeScriptSDK/issues"
+    "url": "https://github.com/Comfy-Org/comfy-typescript-sdk/issues"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Comfy-Org/ComfyTypeScriptSDK.git"
+    "url": "git+https://github.com/Comfy-Org/comfy-typescript-sdk.git"
   },
   "files": [
     "dist",

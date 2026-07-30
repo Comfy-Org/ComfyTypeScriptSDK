@@ -2,7 +2,7 @@
 language: "en-US"
 early_access: false
 tone_instructions: |
-  This is a public TypeScript SDK (ComfyTypeScriptSDK). CI already runs
+  This is a public TypeScript SDK (comfy-typescript-sdk). CI already runs
   `oxlint`, `oxfmt --check`, `tsc` (typecheck), and `vitest` on every PR — do
   not repeat their findings or nitpick style/formatting. Focus on public API
   stability (this SDK is consumed by external users, so flag breaking

@@ -72,8 +72,9 @@ const INTERNAL_MARKER_RES = [
 const PUBLIC_COMFY_ORG_REPOS = new Set([
   "ComfyUI",
   "ComfyUI_frontend",
-  "ComfyPythonSDK",
-  "ComfyTypeScriptSDK",
+  "comfy-python-sdk",
+  "comfy-typescript-sdk",
+  "comfy-swift-sdk",
   "Comfy-Desktop",
   "comfy-cli",
   "comfy-api-proxy",
