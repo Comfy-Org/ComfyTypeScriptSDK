@@ -13,6 +13,15 @@ import { readFile } from "node:fs/promises";
 
 export type WorkflowGraph = Record<string, unknown>;
 
+/**
+ * An API-format ComfyUI graph, ready to submit.
+ *
+ * Build one through `client.workflows` rather than constructing it directly.
+ * This is the API format produced by "Save (API Format)" — not the UI format,
+ * which the SDK rejects locally with `WorkflowFormatUi` before any request is
+ * made. The raw graph stays readable and mutable as
+ * {@link Workflow.json}.
+ */
 export class Workflow {
   json: WorkflowGraph;
 
@@ -39,15 +48,18 @@ export class Workflow {
  * subgraphs land; in v1 it is purely local.
  */
 export class WorkflowFactory {
+  /** Read and parse an API-format workflow from a JSON file on disk. */
   async fromFile(path: string): Promise<Workflow> {
     const text = await readFile(path, "utf-8");
     return new Workflow(JSON.parse(text) as WorkflowGraph);
   }
 
+  /** Wrap an already-parsed graph object. The object is used as-is, not copied. */
   fromJson(graph: WorkflowGraph): Workflow {
     return new Workflow(graph);
   }
 
+  /** Parse an API-format workflow from a JSON string. */
   fromString(text: string): Workflow {
     return new Workflow(JSON.parse(text) as WorkflowGraph);
   }

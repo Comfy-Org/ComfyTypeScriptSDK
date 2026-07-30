@@ -21,6 +21,15 @@ import { Output } from "./outputs.js";
 // terminal frame having been seen.
 const RECONNECT_PAUSE_MS = 100;
 
+/**
+ * A handle to one submitted job — rehydratable from its ID alone via
+ * `client.jobs.get(id)`.
+ *
+ * Every accessor reads the state currently on the handle; nothing re-fetches
+ * implicitly. {@link Job.wait} or {@link Job.result} advances it to a
+ * terminal state, {@link Job.refresh} pulls fresh state once, and
+ * {@link Job.events} streams live progress.
+ */
 export class Job {
   private readonly low: ComfyLow;
   private model: LowJob;
@@ -30,22 +39,33 @@ export class Job {
     this.model = model;
   }
 
+  /** Server-assigned job ID. Enough on its own to rebuild this handle later. */
   get id(): string {
     return this.model.id;
   }
 
+  /** Last known status — `queued`, `running`, `succeeded`, `canceled`, `failed`, `expired`. Reflects the most recent fetch, not necessarily the server's current state. */
   get status(): string {
     return this.model.status;
   }
 
+  /** Every output across all nodes. Empty until the job succeeds. */
   get outputs(): Output[] {
     return this.model.outputs.map((o) => this.bindOutput(o));
   }
 
+  /** Failure detail when the job ended `failed`, otherwise `null`. */
   get error(): LowJob["error"] {
     return this.model.error;
   }
 
+  /**
+   * The outputs produced by one node, in server order.
+   *
+   * Reads state already on this handle — it does not re-fetch, so await
+   * {@link Job.result} or {@link Job.wait} first. An unknown `nodeId`, or a
+   * node that produced nothing, gives an empty array rather than throwing.
+   */
   getOutputs(nodeId: string): Output[] {
     return this.model.outputs.filter((o) => o.node_id === nodeId).map((o) => this.bindOutput(o));
   }
@@ -88,6 +108,13 @@ export class Job {
     return this;
   }
 
+  /**
+   * Ask the server to cancel, and adopt the state it returns.
+   *
+   * Cancellation is a request, not a guarantee: a job that already reached a
+   * terminal state stays in it, so check {@link Job.status} afterwards rather
+   * than assuming the job stopped.
+   */
   async cancel(signal?: AbortSignal): Promise<this> {
     this.model = await translate(() =>
       this.low.cancelJob(this.model.urls.cancel || this.model.id, { signal }),
@@ -149,6 +176,9 @@ export class Job {
   }
 }
 
+/**
+ * Rebuilds {@link Job} handles from an ID. Reached as `client.jobs`.
+ */
 export class JobFactory {
   private readonly low: ComfyLow;
 
@@ -156,6 +186,10 @@ export class JobFactory {
     this.low = low;
   }
 
+  /**
+   * Fetch a job by ID and wrap it in a fresh handle — the resume path for a
+   * job submitted by another process, or in an earlier run.
+   */
   async get(jobId: string): Promise<Job> {
     return new Job(this.low, await translate(() => this.low.getJob(jobId)));
   }
