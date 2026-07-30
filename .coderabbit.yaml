@@ -2,13 +2,8 @@
 language: "en-US"
 early_access: false
 tone_instructions: |
-  This is a public TypeScript SDK (comfy-typescript-sdk). CI already runs
-  `oxlint`, `oxfmt --check`, `tsc` (typecheck), and `vitest` on every PR — do
-  not repeat their findings or nitpick style/formatting. Focus on public API
-  stability (this SDK is consumed by external users, so flag breaking
-  changes to exported types/functions), type safety (no `any`), and correct
-  Promise/error handling. Only comment on issues introduced by this PR's
-  changes; do not flag pre-existing problems in moved or reformatted code.
+  Direct and technical. Lead with the concrete risk or breakage, not praise.
+  No compliments or filler — if a change is fine, say nothing.
 
 reviews:
   profile: "assertive"
@@ -33,6 +28,17 @@ reviews:
     - "!**/pnpm-lock.yaml"
 
   path_instructions:
+    # Repo-wide review rules. These used to live in `tone_instructions`, but
+    # that field is capped at 250 characters by the CodeRabbit schema, which
+    # silently invalidated this whole file.
+    - path: "**"
+      instructions: |
+        CI already runs `oxlint`, `oxfmt --check`, `tsc` (typecheck), and
+        `vitest` on every PR — do not repeat their findings or nitpick
+        style/formatting.
+
+        Only comment on issues introduced by this PR's changes; do not flag
+        pre-existing problems in moved or reformatted code.
     - path: "src/**"
       instructions: |
         Public SDK surface. Focus on:
