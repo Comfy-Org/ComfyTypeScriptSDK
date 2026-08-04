@@ -63,9 +63,7 @@ describe("follow-up link resolution", () => {
   it("resolves a path-mounted self link against the origin, not baseUrl", async () => {
     const { low, requests } = capturingLow(PATH_MOUNTED_BASE, "comfyui-k");
     await low.getJob("/deployment/dep_123/api/v2/jobs/j1");
-    expect(requests[0].url).toBe(
-      "https://proxy.example/deployment/dep_123/api/v2/jobs/j1",
-    );
+    expect(requests[0].url).toBe("https://proxy.example/deployment/dep_123/api/v2/jobs/j1");
   });
 
   it("keeps the deployment prefix for internal shorthand paths", async () => {
